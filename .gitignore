@@ -1,0 +1,67 @@
+# ============================================================================
+# 忽略规则
+# ============================================================================
+
+# ---- 环境与密钥（绝不入库） ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+
+# ---- 存储目录：上传文件与生成的报告 ----
+storage/uploads/*
+storage/reports/*
+!storage/uploads/.gitkeep
+!storage/reports/.gitkeep
+
+# ---- Go ----
+server/bin/
+*.exe
+*.test
+*.out
+vendor/
+
+# ---- Node / 前端 ----
+node_modules/
+web/dist/
+web/dist-ssr/
+web/stats.html
+web/.vite/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---- .NET ----
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+services/docgen/**/bin/
+services/docgen/**/obj/
+
+# ---- 编辑器与系统 ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+*.swp
+*~
+
+# ---- 构建与日志 ----
+*.log
+logs/
+backups/
+coverage/
+
+# ---- npm 本地缓存（沙箱/隔离环境用） ----
+.npm-cache/
+
+# ---- 本地验证产物（截图、DOM 快照）----
+.verify/
+
+# ---- buildx 本地状态（沙箱下 ~/.docker 不可写）----
+.buildx/

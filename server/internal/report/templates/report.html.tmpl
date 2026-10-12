@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>{{ .Title }}</title>
+<style>
+  /* PDF 由 Gotenberg 的 Chromium 渲染，页面尺寸在这里声明；
+     页边距由 Go 侧以表单字段显式传给 Gotenberg（CSS 的 @page margin
+     与 Gotenberg 的 margin 参数会叠加，只留一处控制）。 */
+  @page { size: A4; }
+
+  * { box-sizing: border-box; }
+
+  body {
+    /* ⚠️ 字体必须点名 Noto Sans CJK（Gotenberg 官方镜像自带
+       NotoSansCJK-Regular.ttc）。不写的话 Chromium 会回退到一个
+       不含汉字的字体，页面上的中文全部变成空心方框，而转换本身
+       是成功的 —— 错误只在肉眼可见的地方。 */
+    font-family: "Noto Sans CJK SC", "Noto Sans CJK", "Source Han Sans SC",
+                 "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.7;
+    color: #1a1a1a;
+    margin: 0;
+  }
+
+  h1 { font-size: 16pt; margin: 0 0 10pt; padding-bottom: 4pt;
+       border-bottom: 1.5pt solid #2c5aa0; }
+  h2 { font-size: 12pt; margin: 14pt 0 6pt; color: #2c5aa0; }
+  p  { margin: 0 0 6pt; text-align: justify; text-indent: 2em; }
+  p.no-indent { text-indent: 0; }
+
+  /* 每个一级章节另起一页 */
+  section.chapter { break-before: page; page-break-before: always; }
+  section.chapter:first-of-type { break-before: auto; page-break-before: auto; }
+
+  /* ── 封面 ───────────────────────────────────────────────── */
+  .cover {
+    height: 240mm;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    break-after: page;
+    page-break-after: always;
+  }
+  .cover h1.cover-title {
+    font-size: 26pt;
+    border: none;
+    margin: 0 0 14pt;
+    line-height: 1.4;
+    color: #14315c;
+  }
+  .cover .cover-subtitle { font-size: 12pt; color: #444; margin-bottom: 28pt; text-indent: 0; }
+  .cover .cover-meta { font-size: 10pt; color: #555; line-height: 2; text-indent: 0; }
+  .cover .cover-rule { width: 60%; height: 1pt; background: #c9d4e4; margin: 18pt 0; }
+
+  /* ── 目录 ───────────────────────────────────────────────── */
+  .toc { break-after: page; page-break-after: always; }
+  .toc h1 { border-bottom: 1.5pt solid #2c5aa0; }
+  .toc ol { margin: 0; padding-left: 1.6em; }
+  .toc li { font-size: 11pt; line-height: 2.1; }
+  .toc .toc-note { font-size: 8.5pt; color: #888; margin-top: 12pt; text-indent: 0; }
+
+  /* ── 表格 ───────────────────────────────────────────────── */
+  table { width: 100%; border-collapse: collapse; margin: 6pt 0 10pt; }
+  caption { caption-side: top; font-size: 9.5pt; color: #555;
+            text-align: left; padding-bottom: 3pt; }
+  th, td { border: 0.5pt solid #9aa4b2; padding: 4pt 6pt; font-size: 9pt;
+           line-height: 1.5; vertical-align: top; }
+  th { background: #f0f4fa; font-weight: 700; text-align: center; }
+  td.num { text-align: right; white-space: nowrap; }
+  td.center { text-align: center; }
+  thead { display: table-header-group; }  /* 跨页重复表头 */
+  tr { page-break-inside: avoid; }
+
+  /* ── 矩阵 ───────────────────────────────────────────────── */
+  table.matrix td.cell { text-align: center; padding: 5pt 2pt; }
+  table.matrix td.cell .cnt { font-weight: 700; font-size: 10pt; display: block; }
+  table.matrix td.cell .lv  { font-size: 7.5pt; color: #555; }
+
+  /* 等级色带：与前端色板同源，只是本处用浅色以适配打印 */
+  .lv-very_high { background: #fde8e8; }
+  .lv-high      { background: #fdeee0; }
+  .lv-medium    { background: #fdf6dd; }
+  .lv-low       { background: #e8f5e9; }
+  .lv-very_low  { background: #eef2f6; }
+
+  .notes p { text-indent: 0; margin-bottom: 7pt; }
+  .notes strong { color: #14315c; }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════ 封面 ══════════════════════════════ -->
+<div class="cover">
+  <h1 class="cover-title">{{ .Title }}</h1>
+  {{ if .Subtitle }}<p class="cover-subtitle">{{ .Subtitle }}</p>{{ end }}
+  <div class="cover-rule"></div>
+  <div class="cover-meta">
+    评估范围：{{ .ScopeTxt }}<br />
+    资产数量：{{ .Assessment.AssetsCount }} 台　　风险项：{{ .Assessment.RiskItemsCount }} 条<br />
+    最高风险值：{{ num .MaxRisk }}（{{ .MaxLevel }}）<br />
+    报告生成时间：{{ .GeneratedAt.Format "2006-01-02 15:04:05" }}<br />
+    导出人：{{ emptyAsDash .GeneratedBy }}
+  </div>
+</div>
+
+<!-- ══════════════════════════════ 目录 ══════════════════════════════ -->
+<div class="toc">
+  <h1>目录</h1>
+  <ol>
+    <li>评估概述</li>
+    <li>评估方法与配置</li>
+    <li>风险等级分布</li>
+    <li>风险矩阵</li>
+    <li>资产风险汇总</li>
+    <li>风险项明细</li>
+    <li>附：口径说明</li>
+  </ol>
+  <p class="toc-note">
+    说明：本 PDF 由浏览器引擎渲染，目录为静态章节列表，页码请见页脚。
+  </p>
+</div>
+
+<!-- ══════════════════════════ 一、评估概述 ══════════════════════════ -->
+<section class="chapter">
+  <h1>一、评估概述</h1>
+  <p>本报告针对「{{ .Assessment.Name }}」的评估结果编制，评估方法为 {{ .Config.Model }}（GB/T 20984 相乘法）。</p>
+  <p>评估范围：{{ .ScopeTxt }}。范围内共 {{ .Assessment.AssetsCount }} 台资产，产出 {{ .Assessment.RiskItemsCount }} 条风险项，其中最高风险值 {{ num .MaxRisk }}（{{ .MaxLevel }}）。</p>
+  {{ if .Assessment.Description }}<p>评估说明：{{ .Assessment.Description }}</p>{{ end }}
+
+  <table>
+    <caption>表 1　评估任务基本信息</caption>
+    <tbody>
+      <tr><th style="width:28%">项目</th><th>内容</th></tr>
+      <tr><td>评估名称</td><td>{{ .Assessment.Name }}</td></tr>
+      <tr><td>评估范围</td><td>{{ .ScopeTxt }}</td></tr>
+      <tr><td>默认威胁</td><td>{{ emptyAsDash .Assessment.DefaultThreatName }}</td></tr>
+      <tr><td>资产数量</td><td>{{ .Assessment.AssetsCount }}</td></tr>
+      <tr><td>风险项数量</td><td>{{ .Assessment.RiskItemsCount }}</td></tr>
+      <tr><td>最高风险值</td><td>{{ num .MaxRisk }}</td></tr>
+      <tr><td>计算时间</td><td>{{ emptyAsDash .Assessment.CalculatedAt }}</td></tr>
+      <tr><td>报告生成时间</td><td>{{ .GeneratedAt.Format "2006-01-02 15:04:05" }}</td></tr>
+      <tr><td>导出人</td><td>{{ emptyAsDash .GeneratedBy }}</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ════════════════════ 二、评估方法与配置 ════════════════════ -->
+<section class="chapter">
+  <h1>二、评估方法与配置</h1>
+  <p>风险值按 GB/T 20984 的相乘法定量计算：R = A × T × V。其中 A 为资产价值，由资产重要性与资产价值权重系数相乘得到；T 为威胁可能性，取威胁字典中的权重；V 为脆弱性严重程度，取漏洞的严重程度定级。</p>
+  <p>本次评估使用的配置如下（为可复现起见，配置在计算时刻即被快照冻结，此后修改系统配置不影响本报告的结论）。快照时间：{{ .Config.CapturedAt.Format "2006-01-02 15:04:05" }}。</p>
+
+  <table>
+    <caption>表 2　本次评估所用配置（配置快照）</caption>
+    <thead>
+      <tr><th style="width:26%">配置项</th><th style="width:22%">取值</th><th>说明</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>计算模型</td><td>{{ .Config.Model }}</td><td>GB/T 20984 相乘法</td></tr>
+      <tr><td>资产价值权重系数</td><td class="num">{{ num .Config.AssetWeight }}</td><td>A = 资产重要性 × 该系数</td></tr>
+      <tr><td>「很高」下界</td><td class="num">{{ .Config.Thresholds.VeryHigh }}</td><td>R 大于等于该值判为很高</td></tr>
+      <tr><td>「高」下界</td><td class="num">{{ .Config.Thresholds.High }}</td><td>用于 12 ≤ R &lt; 20 一类的区间判定</td></tr>
+      <tr><td>「中」下界</td><td class="num">{{ .Config.Thresholds.Medium }}</td><td></td></tr>
+      <tr><td>「低」下界</td><td class="num">{{ .Config.Thresholds.Low }}</td><td></td></tr>
+      <tr><td>阈值快照时间</td><td colspan="2">{{ .Config.CapturedAt.Format "2006-01-02 15:04:05" }}</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ════════════════════ 三、风险等级分布 ════════════════════ -->
+<section class="chapter">
+  <h1>三、风险等级分布</h1>
+  <p>全部 {{ .LevelTotal }} 条风险项按上述阈值判定后的分布如下。占比之和因四舍五入可能不等于 100%。</p>
+
+  <table>
+    <caption>表 3　风险等级分布</caption>
+    <thead>
+      <tr>
+        <th style="width:14%">风险等级</th><th style="width:22%">风险值区间</th>
+        <th style="width:14%">风险项数</th><th style="width:14%">占比</th><th>处置建议</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{ range .LevelRows }}
+      <tr class="lv-{{ .Level }}">
+        <td class="center">{{ .Label }}</td>
+        <td class="center">{{ .Range }}</td>
+        <td class="num">{{ .Count }}</td>
+        <td class="num">{{ .Percent }}%</td>
+        <td>{{ .Action }}</td>
+      </tr>
+      {{ end }}
+    </tbody>
+  </table>
+</section>
+
+<!-- ════════════════════ 四、风险矩阵 ════════════════════ -->
+<section class="chapter">
+  <h1>四、风险矩阵</h1>
+  <p>下表是风险矩阵：横轴为资产重要性，纵轴为脆弱性严重程度，格内为「风险项数 / 该格最高等级」。格子的位置固定在 1–5 的坐标上，因此两次查看同一个评估，同一块风险始终落在同一格里。</p>
+
+  <table class="matrix">
+    <caption>表 4　风险矩阵（5 × 5）</caption>
+    <thead>
+      <tr>
+        <th style="width:24%">脆弱性严重程度 ＼ 资产重要性</th>
+        {{ range .Grid }}<th>{{ . }}</th>{{ end }}
+      </tr>
+    </thead>
+    <tbody>
+      {{ range .MatrixRows }}
+      <tr>
+        <th class="center">{{ .Severity }}</th>
+        {{ range $cell := .Counts }}
+        <td class="cell lv-{{ $cell.Level }}">
+          <span class="cnt">{{ $cell.Count }}</span>
+          <span class="lv">{{ levelLabel $cell.Level }}</span>
+        </td>
+        {{ end }}
+      </tr>
+      {{ end }}
+    </tbody>
+  </table>
+</section>
+
+<!-- ════════════════════ 五、资产风险汇总 ════════════════════ -->
+<section class="chapter">
+  <h1>五、资产风险汇总</h1>
+  <p>下表按资产汇总风险。每台资产的「风险值」取其名下<strong>最大</strong>的风险项值，而不是平均值——一个致命漏洞就足以决定这台机器的处置优先级，取平均会把它稀释掉。</p>
+
+  <table>
+    <caption>表 5　资产风险汇总（按风险值降序）</caption>
+    <thead>
+      <tr>
+        <th>资产名称</th><th style="width:16%">IP 地址</th><th style="width:10%">重要性</th>
+        <th style="width:12%">资产价值 A</th><th style="width:13%">最高风险值 R</th>
+        <th style="width:9%">等级</th><th style="width:9%">风险项数</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{ range .Assets }}
+      <tr>
+        <td>{{ emptyAsDash .Name }}</td>
+        <td>{{ emptyAsDash .IP }}</td>
+        <td class="center">{{ .Importance }}</td>
+        <td class="num">{{ num .ValueA }}</td>
+        <td class="num">{{ num .RiskValue }}</td>
+        <td class="center">{{ levelLabel .RiskLevel }}</td>
+        <td class="num">{{ .ItemsCount }}</td>
+      </tr>
+      {{ else }}
+      <tr><td colspan="7" class="center">—</td></tr>
+      {{ end }}
+    </tbody>
+  </table>
+</section>
+
+<!-- ════════════════════ 六、风险项明细 ════════════════════ -->
+<section class="chapter">
+  <h1>六、风险项明细</h1>
+  <p>下表逐条列出全部 {{ len .Items }} 条风险项。A / T / V / R 四列齐存而不是只给结果，是为了让读到某个数值的人能当场把它拆开核对——只给 R 的报告，在有人质疑「为什么这台机器是 20 分」时无法自证。</p>
+
+  <table>
+    <caption>表 6　风险项明细（资产 × 漏洞）</caption>
+    <thead>
+      <tr>
+        <th style="width:5%">序号</th><th style="width:16%">资产</th><th>漏洞</th>
+        <th style="width:11%">威胁</th><th style="width:6%">重要性</th>
+        <th style="width:6%">A</th><th style="width:6%">T</th><th style="width:6%">V</th>
+        <th style="width:7%">R</th><th style="width:7%">等级</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{ range .Items }}
+      <tr>
+        <td class="num">{{ .Seq }}</td>
+        <td>{{ emptyAsDash .AssetName }}{{ if .AssetIP }}<br />（{{ .AssetIP }}）{{ end }}</td>
+        <td>{{ emptyAsDash .VulnTitle }}</td>
+        <td>{{ emptyAsDash .ThreatName }}</td>
+        <td class="center">{{ .Importance }}</td>
+        <td class="num">{{ num .A }}</td>
+        <td class="num">{{ num .T }}</td>
+        <td class="num">{{ num .V }}</td>
+        <td class="num">{{ num .R }}</td>
+        <td class="center">{{ levelLabel .RiskLevel }}</td>
+      </tr>
+      {{ else }}
+      <tr><td colspan="10" class="center">—</td></tr>
+      {{ end }}
+    </tbody>
+  </table>
+</section>
+
+<!-- ════════════════════ 附：口径说明 ════════════════════ -->
+<section class="chapter notes">
+  <h1>附：口径说明</h1>
+  <p><strong>一、风险值计算。</strong>R = A × T × V。A = 资产重要性 × 资产价值权重系数（本次为 {{ num .Config.AssetWeight }}）；T 为威胁可能性权重；V 为漏洞严重程度档位。</p>
+  <p><strong>二、等级判定。</strong>判定自高到低依次比较，区间为闭下界：{{ thresholdRange "very_high" .Config.Thresholds }} 判为很高，{{ thresholdRange "high" .Config.Thresholds }} 判为高，{{ thresholdRange "medium" .Config.Thresholds }} 判为中，{{ thresholdRange "low" .Config.Thresholds }} 判为低，{{ thresholdRange "very_low" .Config.Thresholds }} 判为很低。因此 R 恰等于某个下界时，归入该下界对应的档位。</p>
+  <p><strong>三、可复现性。</strong>本报告的数字来自评估任务计算时刻冻结的配置快照（见第二节），此后修改系统配置不会改变本报告的结论。若需按新配置重算，请重新执行评估。</p>
+  <p><strong>四、数据来源。</strong>资产、漏洞与威胁均来自系统内的台账数据；报告不引入任何外部数据，也不对台账数据做修正。</p>
+  <p><strong>五、生成信息。</strong>本报告由系统于 {{ .GeneratedAt.Format "2006-01-02 15:04:05" }} 自动导出，导出人 {{ emptyAsDash .GeneratedBy }}。</p>
+</section>
+
+</body>
+</html>

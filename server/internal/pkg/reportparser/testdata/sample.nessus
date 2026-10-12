@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<NessusClientData_v2>
+  <Policy>
+    <policyName></policyName>
+  </Policy>
+  <Report name="20260930-内网扫描">
+    <ReportHost name="d0f1a2b3-4c5d-6e7f-8a9b-0c1d2e3f4a5b">
+      <HostProperties>
+        <tag name="HOST">192.168.1.10</tag>
+        <tag name="NAME">web-01</tag>
+        <tag name="operating-system">Linux Kernel 5.4</tag>
+      </HostProperties>
+      <ReportItem port="443" svc_name="https" protocol="tcp" severity="2" pluginID="42873" pluginName="SSL Medium Strength Cipher Suites Supported (SWEET32)" pluginFamily="General">
+        <description>The remote host supports the use of SSL ciphers that offer mediumstrength encryption.</description>
+        <solution>Reconfigure the affected application to avoid the use of medium strength ciphers.</solution>
+        <risk_factor>MEDIUM</risk_factor>
+        <cve>CVE-2016-2183</cve>
+        <cve>cve-2016-6329</cve>
+        <cvss_base_score>3.7</cvss_base_score>
+        <cvss_vector>CVSS2#AV:N/AC:H/Au:N/C:P/I:N/A:N</cvss_vector>
+      </ReportItem>
+      <ReportItem port="22" svc_name="ssh" protocol="tcp" severity="3" pluginID="10662" pluginName="OpenSSH &lt; 9.8 Multiple Vulnerabilities" pluginFamily="Misc.">
+        <description><![CDATA[According to its banner, the version of OpenSSH running on the remote host is prior to 9.8.]]></description>
+        <solution><![CDATA[Upgrade to OpenSSH 9.8 or later.]]></solution>
+        <risk_factor>HIGH</risk_factor>
+        <cve>CVE-2024-6387</cve>
+        <cvss_base_score>8.1</cvss_base_score>
+      </ReportItem>
+      <ReportItem port="0" svc_name="general" protocol="tcp" severity="4" pluginID="12053" pluginName="Nessus Scan Information" pluginFamily="Settings">
+        <description>This plugin displays information about the Nessus scan.</description>
+        <solution>n/a</solution>
+        <risk_factor>CRITICAL</risk_factor>
+      </ReportItem>
+    </ReportHost>
+    <ReportHost name="10.0.0.5">
+      <HostProperties>
+        <tag name="HOST">10.0.0.5</tag>
+      </HostProperties>
+      <ReportItem port="0" svc_name="general" protocol="" severity="0" pluginID="19506" pluginName="Nessus Scan Information">
+        <description>Information about this scan.</description>
+        <risk_factor>INFO</risk_factor>
+      </ReportItem>
+    </ReportHost>
+  </Report>
+</NessusClientData_v2>

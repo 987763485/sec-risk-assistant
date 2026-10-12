@@ -1,0 +1,113 @@
+/* ==========================================================================
+ * 全局样式入口 —— 请勿随意调整本文件的写法
+ * ==========================================================================
+ *
+ * ⚠️ 本文件是 Element Plus × Tailwind v4 共存方案的落地文件，
+ *    改动前务必阅读 docs/08-前端样式规范.md。
+ *
+ * 关键点：
+ *   1. 层顺序声明必须放在最前面（靠后的层优先级更高）
+ *   2. 刻意**不引入** preflight —— 它会把 Element Plus 依赖的原生
+ *      button / input / img 默认样式重置掉（按钮背景透明、输入框无边框）
+ *   3. Element Plus 的 CSS 由 plugins/vite-plugin-css-layer.ts 统一包进
+ *      @layer el，因此在层序中排在 utilities 之前 → 工具类可覆盖组件样式
+ *
+ * 层优先级（低 → 高）：
+ *   theme → base → el → components → utilities
+ *    变量    重置   组件库   业务组件    Tailwind 工具类
+ * ========================================================================== */
+
+@layer theme, base, el, components, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+
+/* preflight 已刻意停用，原因见文件头第 2 条。
+   如确需恢复，请同步评估 Element Plus 组件的渲染是否被破坏。 */
+/* @import 'tailwindcss/preflight.css' layer(base); */
+
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+/* --------------------------------------------------------------------------
+ * 最小基础重置 —— 替代 preflight，只做真正必要的跨浏览器一致性处理，
+ * 不触碰 button / input 等 Element Plus 依赖其默认样式的元素
+ * ------------------------------------------------------------------------ */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html,
+  body,
+  #app {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    font-family:
+      system-ui,
+      -apple-system,
+      'PingFang SC',
+      'Hiragino Sans GB',
+      'Microsoft YaHei',
+      'Helvetica Neue',
+      Arial,
+      sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--el-text-color-primary, #303133);
+    background-color: var(--el-bg-color-page, #f5f7fa);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  a {
+    color: var(--el-color-primary, #409eff);
+    text-decoration: none;
+  }
+
+  a:hover {
+    text-decoration: underline;
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * 业务自定义层 —— 需要让自己的样式能覆盖 Element Plus 时，写在这里
+ * ------------------------------------------------------------------------ */
+@layer components {
+  /* 页面统一容器 */
+  .app-page {
+    padding: 20px;
+  }
+
+  /* 卡片式区块 */
+  .app-panel {
+    padding: 20px;
+    background-color: var(--el-bg-color, #ffffff);
+    border: 1px solid var(--el-border-color-lighter, #ebeef5);
+    border-radius: 6px;
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * 滚动条美化（纯视觉，不影响布局）
+ * ------------------------------------------------------------------------ */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--el-border-color, #dcdfe6);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--el-border-color-darker, #c0c4cc);
+}
+
+::-webkit-scrollbar-track {
+  background-color: transparent;
+}

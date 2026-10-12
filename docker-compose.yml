@@ -1,0 +1,184 @@
+# ============================================================================
+# sec-risk-assistant —— 本机开发与生产部署共用的服务编排（5 容器）
+#
+# 服务拓扑：
+#
+#   web (nginx :80) ──▶ server (Go :8080) ──▶ mysql (8.4)
+#                            ├──────────────▶ docgen (C# :8090)   ← 仅内网
+#                            └──────────────▶ gotenberg (:3000)   ← 仅内网
+#
+# ⚠️ 安全约定：docgen 与 gotenberg **不映射任何端口到宿主机**，
+#    只能在 secrisk-internal 网络内被 server 访问。两者都要求
+#    X-Internal-Secret 请求头做二次校验（见 deploy/nginx 与各自服务代码）。
+#
+# 使用：
+#   cp .env.example .env      # 首次
+#   make infra                # 只起 mysql / gotenberg / docgen（本地开发用）
+#   make up                   # 起全部服务（含 web，访问 http://localhost:8000）
+# ============================================================================
+
+name: sec-risk-assistant
+
+services:
+  # ---------------------------------------------------------------- MySQL 8.4
+  mysql:
+    image: mysql:8.4
+    container_name: secrisk-mysql
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+08:00
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD 未设置，请先 cp .env.example .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-sec_risk}
+      MYSQL_USER: ${MYSQL_USER:-secrisk}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD 未设置，请先 cp .env.example .env}
+      TZ: Asia/Shanghai
+    ports:
+      # 仅绑回环地址：本机开发可连，局域网不可见
+      - "127.0.0.1:${MYSQL_PORT:-13306}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 30s
+    networks:
+      - secrisk-net
+
+  # ------------------------------------------------------- 主服务（Go / Gin）
+  server:
+    build:
+      context: .
+      dockerfile: deploy/server.Dockerfile
+      args:
+        VERSION: ${APP_VERSION:-0.1.0}
+    image: secrisk/server:${APP_VERSION:-0.1.0}
+    container_name: secrisk-server
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      docgen:
+        condition: service_started
+      # gotenberg 也要等：P5 的 PDF 导出依赖它，而它拉起的 Chromium
+      # 是整套编排里最慢的一个（镜像大、首次启动要初始化）。
+      # 不加这一条时，server 会比它先就绪——看起来没问题，
+      # 直到第一次导出 PDF 才收到 503。
+      gotenberg:
+        condition: service_started
+    environment:
+      SR_APP_ENV: ${SR_APP_ENV:-prod}
+      SR_APP_LOG_LEVEL: ${SR_APP_LOG_LEVEL:-info}
+      # 容器内必须监听 0.0.0.0，否则 nginx 无法转发
+      SR_SERVER_HOST: 0.0.0.0
+      SR_SERVER_PORT: "8080"
+      # 生产下前端与 API 同源，不触发 CORS
+      SR_SERVER_CORS_ORIGINS: ${SR_SERVER_CORS_ORIGINS:-http://localhost:8000}
+      SR_DATABASE_HOST: mysql
+      SR_DATABASE_PORT: "3306"
+      SR_DATABASE_USER: ${MYSQL_USER:-secrisk}
+      SR_DATABASE_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD 未设置}
+      SR_DATABASE_NAME: ${MYSQL_DATABASE:-sec_risk}
+      SR_INTERNAL_SHARED_SECRET: ${SR_INTERNAL_SHARED_SECRET:?SR_INTERNAL_SHARED_SECRET 未设置}
+      # 两个渲染上游都走服务名（secrisk-internal 网络内解析），
+      # 与 internal.docgen_url / internal.gotenberg_url 两个配置键对应。
+      SR_INTERNAL_DOCGEN_URL: http://docgen:8090
+      SR_INTERNAL_GOTENBERG_URL: http://gotenberg:3000
+      TZ: Asia/Shanghai
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    networks:
+      - secrisk-net
+      - secrisk-internal
+
+  # --------------------------------------------------- 文档服务（C# / .NET 10）
+  docgen:
+    build:
+      context: .
+      dockerfile: services/docgen/Dockerfile
+    image: secrisk/docgen:${APP_VERSION:-0.1.0}
+    container_name: secrisk-docgen
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8090
+      DOCGEN_INTERNAL_SECRET: ${SR_INTERNAL_SHARED_SECRET:?SR_INTERNAL_SHARED_SECRET 未设置}
+      TZ: Asia/Shanghai
+    # 刻意不声明 ports：该服务只能在 secrisk-internal 网络内被访问
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8090/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    networks:
+      - secrisk-internal
+
+  # ---------------------------------------------------- PDF 渲染（Gotenberg）
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    container_name: secrisk-gotenberg
+    restart: unless-stopped
+    # 刻意不声明 ports：该服务只能在 secrisk-internal 网络内被访问
+    environment:
+      TZ: Asia/Shanghai
+    command:
+      - "gotenberg"
+      - "--api-timeout=60s"
+      # 单次请求体上限，与 Nginx client_max_body_size 对齐
+      - "--api-body-limit=64MB"
+      # 关闭不需要的端点，减少攻击面
+      - "--libreoffice-auto-start=true"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - secrisk-internal
+
+  # --------------------------------------------------- 前端静态资源（Nginx）
+  web:
+    build:
+      context: .
+      dockerfile: deploy/web.Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-0.1.0}
+    image: secrisk/web:${APP_VERSION:-0.1.0}
+    container_name: secrisk-web
+    restart: unless-stopped
+    depends_on:
+      server:
+        condition: service_started
+    ports:
+      - "${WEB_PORT:-8000}:80"
+    volumes:
+      # 上传与导出文件的持久化目录（不放镜像内，便于备份与迁移）
+      - ./storage/uploads:/var/www/uploads
+      - ./storage/reports:/var/www/reports
+    environment:
+      TZ: Asia/Shanghai
+    networks:
+      - secrisk-net
+
+networks:
+  # 对外网络：仅 web 与 server、mysql 在此
+  secrisk-net:
+    driver: bridge
+  # 内部网络：docgen / gotenberg 只挂这张网，宿主机无法访问
+  secrisk-internal:
+    driver: bridge
+    internal: true
+
+volumes:
+  mysql-data:
+    name: secrisk-mysql-data
