@@ -276,6 +276,62 @@ const (
 	CodeRemediationBatchEmpty = "REMEDIATION_BATCH_EMPTY"
 )
 
+// 扩展模块（三方情报源）错误码（P7）。
+//
+// ⚠️ 这一组里**没有**「拉取失败」这个码，是有意的。
+//
+// 拉取的结果天生是「部分成功」：一次拉 3 个 CVE，可能 2 个成功、1 个被上游
+// 限流。压成一个错误码会丢掉「哪几条成功了」，而成功的那些**已经写进库里**了；
+// 只回一个 200 又让调用方分不清全成功与全失败。
+// 因此拉取接口恒定返回 200，响应体里给 succeeded / failed 与逐条原因
+// （见 FetchIntelResult）。契约里明确写着「HTTP 200 不代表全部成功」。
+//
+// 下面这些码只覆盖「**根本没法开始拉**」的前置问题：配置不对、请求不对、
+// 凭据没到位、出站目标被拒。它们的共性是——用户下一步的动作很明确。
+const (
+	// CodeIntegrationNotFound 集成不存在
+	CodeIntegrationNotFound = "INTEGRATION_NOT_FOUND"
+
+	// CodeIntegrationTypeUnknown 适配器类型不受支持。
+	//
+	// 与「参数格式错误」分开：这是「支持列表里没有这个类型」，
+	// 前端应当把可选类型渲染成下拉框（由 GET /integrations 的
+	// supported_types 给出），而不是让用户手打一个字符串。
+	CodeIntegrationTypeUnknown = "INTEGRATION_TYPE_UNKNOWN"
+
+	// CodeIntegrationNameTaken 同名集成已存在。返回 409 而不是 400。
+	CodeIntegrationNameTaken = "INTEGRATION_NAME_TAKEN"
+
+	// CodeIntegrationDisabled 集成已停用，不能拉取。
+	//
+	// 返回 409：请求本身完全合法，只是当前状态不允许。
+	// 前端据此把「立即拉取」置灰并提示先启用。
+	CodeIntegrationDisabled = "INTEGRATION_DISABLED"
+
+	// CodeIntegrationEndpointBlocked 出站目标被 SSRF 防护拒绝。
+	//
+	// 覆盖两类：协议不是 http/https、以及主机解析到回环/私有/保留网段。
+	// 这是 P7 最重要的一条防护（见 pkg/intelfeed 包注释），
+	// 因此单独给一个码而不是折进 INVALID_PARAM——前端要能对这条
+	// 给出专门的解释（「情报源必须是外部公网地址」），
+	// 而不是一句「参数不合法」让用户去猜是哪一列填错了。
+	CodeIntegrationEndpointBlocked = "INTEGRATION_ENDPOINT_BLOCKED"
+
+	// CodeIntegrationCredentialInvalid 凭据**环境变量名**不合法。
+	//
+	// 只允许固定前缀（SR_INTEL_）的名称。这条校验是安全边界：
+	// 若允许任意变量名，任何能改集成配置的人都可以把 SR_AUTH_JWT_SECRET
+	// 填进去再触发一次拉取，从而把密钥原样发到自己控制的服务器上——
+	// 那等于一个「读取进程内任意环境变量」的原语。
+	CodeIntegrationCredentialInvalid = "INTEGRATION_CREDENTIAL_INVALID"
+
+	// CodeIntegrationCredentialMissing 环境变量名合法，但进程环境里没有它（或为空）。
+	//
+	// 与 invalid 分开：这是**部署**问题，用户要去改部署配置或找运维，
+	// 而不是回来改这一页的表单。错误码分开，前端才能给出正确的引导方向。
+	CodeIntegrationCredentialMissing = "INTEGRATION_CREDENTIAL_MISSING"
+)
+
 // allCodes 全部业务错误码的注册表。
 //
 // 它的唯一用途是「可被程序枚举」：OpenAPI 契约的 ErrorCode 枚举必须与它
@@ -373,6 +429,15 @@ var allCodes = []string{
 	CodeRemediationDeleteForbidden,
 	CodeRemediationBatchTooLarge,
 	CodeRemediationBatchEmpty,
+
+	// 扩展模块（三方情报源）
+	CodeIntegrationNotFound,
+	CodeIntegrationTypeUnknown,
+	CodeIntegrationNameTaken,
+	CodeIntegrationDisabled,
+	CodeIntegrationEndpointBlocked,
+	CodeIntegrationCredentialInvalid,
+	CodeIntegrationCredentialMissing,
 }
 
 // All 返回全部业务错误码的副本。

@@ -18,6 +18,7 @@ import (
 
 	"secrisk/server/internal/model"
 	"secrisk/server/internal/pkg/errcode"
+	"secrisk/server/internal/pkg/intelfeed"
 	"secrisk/server/internal/pkg/reportparser"
 	"secrisk/server/internal/pkg/spreadsheet"
 )
@@ -419,4 +420,86 @@ func errRemediationBatchTooLarge(matched, max int) *Error {
 func errRemediationBatchEmpty() *Error {
 	return newError(http.StatusConflict, errcode.CodeRemediationBatchEmpty,
 		"按当前条件没有可建单的风险项：该评估可能尚未计算，或所选等级下确实没有条目")
+}
+
+// ------------------------------------------------------------- 扩展模块错误
+//
+// 这一组码全部落在「配置」与「请求」两个层面，**没有**「拉取失败」这一类。
+// 理由是拉取的结果天生是「部分成功」的：一次拉 3 个 CVE，可能 2 个成功、
+// 1 个被上游限流。把它压成一个错误码或一个 200 都不对：
+//
+//	压成错误码 → 丢掉「哪几条成功了」，而成功的那些**已经写进库里**了
+//	只回 200 无细节 → 调用方无法区分「全成功」与「全失败」
+//
+// 因此拉取接口恒定返回 200，响应体里给出 succeeded / failed 与逐条原因；
+// 契约里明确写着「HTTP 200 不代表全部成功，必须读 failed」。
+// 这一组码只覆盖「根本没法开始拉」的前置问题。
+
+func errIntegrationNotFound() *Error {
+	return newError(http.StatusNotFound, errcode.CodeIntegrationNotFound, "情报源集成不存在")
+}
+
+func errIntegrationTypeUnknown(raw string) *Error {
+	supported := strings.Join(intelfeed.Supported(), "、")
+	if raw == "" {
+		return newError(http.StatusBadRequest, errcode.CodeIntegrationTypeUnknown,
+			"情报源类型不能为空，当前支持："+supported)
+	}
+	return newError(http.StatusBadRequest, errcode.CodeIntegrationTypeUnknown,
+		fmt.Sprintf("情报源类型「%s」不受支持，当前支持：%s", raw, supported))
+}
+
+func errIntegrationNameTaken(name string) *Error {
+	return newError(http.StatusConflict, errcode.CodeIntegrationNameTaken,
+		"已存在名为「"+name+"」的集成，请换一个名称")
+}
+
+// errIntegrationDisabled 集成已停用。
+//
+// 返回 409 而不是 400：请求本身完全合法，只是当前状态不允许。
+// 前端据此把「立即拉取」按钮置灰并提示先启用，而不是让用户反复检查输入。
+func errIntegrationDisabled(name string) *Error {
+	return newError(http.StatusConflict, errcode.CodeIntegrationDisabled,
+		"集成「"+name+"」已停用，请先启用后再拉取")
+}
+
+// errIntegrationEndpointBlocked 出站目标被 SSRF 防护拒绝。
+//
+// 文案里必须点明「内网地址不允许」，而不是笼统的「地址非法」：
+// 用户填内网地址往往是有意的（想指向内网代理），他需要知道这条路被封死了，
+// 而不是去怀疑自己漏了 http://。
+func errIntegrationEndpointBlocked(reason string) *Error {
+	return newError(http.StatusBadRequest, errcode.CodeIntegrationEndpointBlocked,
+		"上游地址不被允许："+reason)
+}
+
+// errIntegrationCredentialInvalid 凭据环境变量名不合法。
+//
+// ⚠️ 这条校验是安全边界，不是格式洁癖（见 service/integration.go 的长注释）：
+// 只放行固定前缀的变量名，才能把「能改集成配置的人」可读的环境变量
+// 收窄到专供情报源使用的几个。
+func errIntegrationCredentialInvalid(raw string) *Error {
+	if raw == "" {
+		return newError(http.StatusBadRequest, errcode.CodeIntegrationCredentialInvalid,
+			"凭据环境变量名不能为空；若该集成无需凭据，请留空整个字段")
+	}
+	return newError(http.StatusBadRequest, errcode.CodeIntegrationCredentialInvalid,
+		fmt.Sprintf("凭据环境变量名「%s」不合法：只允许以 %s 开头的名称"+
+			"（大写字母、数字与下划线）",
+			raw, credentialEnvPrefix))
+}
+
+// errIntegrationCredentialMissing 环境变量名合法，但进程环境里没有它或为空。
+//
+// 与 invalid 分开的理由：这是**部署**问题而不是**输入**问题，
+// 用户要做的是去改部署配置（或让运维设上那个变量），
+// 而不是回来改这一页的表单。
+func errIntegrationCredentialMissing(env string) *Error {
+	if env == "" {
+		return newError(http.StatusConflict, errcode.CodeIntegrationCredentialMissing,
+			"该集成需要凭据，但尚未配置凭据环境变量名")
+	}
+	return newError(http.StatusConflict, errcode.CodeIntegrationCredentialMissing,
+		"环境变量 "+env+" 未设置或为空。请确认部署配置里已为服务进程设置该变量"+
+			"（变量的**值**不会、也不应写进系统里）")
 }

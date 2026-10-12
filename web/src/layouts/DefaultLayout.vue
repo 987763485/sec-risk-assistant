@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Collection,
+  Connection,
   Document,
   Finished,
   FolderOpened,
@@ -43,6 +44,7 @@ const ICONS: Record<string, Component> = {
   Histogram,
   SetUp,
   Finished,
+  Connection,
 }
 
 /**

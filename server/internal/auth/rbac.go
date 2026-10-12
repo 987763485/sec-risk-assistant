@@ -35,6 +35,20 @@ const (
 	PermAuditRead   Permission = "audit:read"
 	PermSystemRead  Permission = "system:read"
 	PermSystemWrite Permission = "system:write"
+	// PermIntegrationRead / PermIntegrationWrite 三方情报源（P7）。
+	//
+	// ⚠️ 与 system:read / system:write 的分工是本模块的核心决策：
+	//
+	//	改集成配置（POST/PATCH /integrations）→ system:write
+	//	读配置、触发拉取                       → integration:read / integration:write
+	//
+	// 判据是「管理动作 vs 业务动作」：改 base_url 与凭据指向，
+	// 决定的是**这台服务器接下来会向哪里发起请求**，属于系统设置；
+	// 而「对这条漏洞拉一次情报」是业务动作，评估员就该能做。
+	// 若把配置修改也挂在 integration:write 上，那么给评估员开这个权限
+	// 就等于同时把「指定出站目标」的能力交给了他——那是 SSRF 的入口。
+	PermIntegrationRead  Permission = "integration:read"
+	PermIntegrationWrite Permission = "integration:write"
 )
 
 // allPermissions 权限码全集。顺序即前端权限展示顺序，按业务模块归组。
@@ -50,6 +64,7 @@ var allPermissions = []Permission{
 	PermReportRead, PermReportWrite,
 	PermAuditRead,
 	PermSystemRead, PermSystemWrite,
+	PermIntegrationRead, PermIntegrationWrite,
 }
 
 // AllPermissions 返回权限码全集的副本。
@@ -79,6 +94,10 @@ var rolePermissions = map[string][]Permission{
 
 	// 评估员：业务全流程，但不碰用户/角色/系统设置，也看不到审计日志。
 	// 保留 user:read 是为了在评估任务里选择负责人时能拉到候选列表。
+	//
+	// P7 起含 integration:read + integration:write：对漏洞拉一次情报是
+	// 评估工作的一部分。**但不含 system:write**，因此评估员能拉取、
+	// 不能改集成配置——这正是上面权限码定义里那条分工的落点。
 	RoleAssessor: {
 		PermUserRead,
 		PermAssetRead, PermAssetWrite,
@@ -88,9 +107,13 @@ var rolePermissions = map[string][]Permission{
 		PermAssessRead, PermAssessWrite,
 		PermRemedRead, PermRemedWrite,
 		PermReportRead, PermReportWrite,
+		PermIntegrationRead, PermIntegrationWrite,
 	},
 
-	// 审计员：全站只读，但能看审计日志与系统配置（这正是审计岗的价值所在）
+	// 审计员：全站只读，但能看审计日志与系统配置（这正是审计岗的价值所在）。
+	// integration:read 由 readOnlyPermissions() 自动派生——这条派生规则
+	// 的意义在这里体现得很直接：P7 新增了资源，审计员的读权限自动跟上，
+	// 不需要有人记得回来加一行。
 	RoleAuditor: readOnlyPermissions(),
 }
 

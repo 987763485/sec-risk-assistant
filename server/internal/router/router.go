@@ -162,6 +162,11 @@ func New(deps Deps, db *gorm.DB) (*gin.Engine, error) {
 	remediationSvc := service.NewRemediationService(repo, logger)
 	dashboardSvc := service.NewDashboardService(repo, logger)
 
+	// 三方情报源（P7）。它是**唯一**会发起出站请求的服务，
+	// 因此它的构造函数不接收任何"网络配置"——出站目标来自数据库里的
+	// 集成配置，且每一处都过 pkg/intelfeed 的 SSRF 校验。
+	integrationSvc := service.NewIntegrationService(repo, logger)
+
 	authHandler := handler.NewAuthHandler(base, authSvc)
 	userHandler := handler.NewUserHandler(base, userSvc)
 	auditHandler := handler.NewAuditHandler(base, repo)
@@ -171,12 +176,13 @@ func New(deps Deps, db *gorm.DB) (*gin.Engine, error) {
 	assetImportHandler := handler.NewAssetImportHandler(base, assetSvc)
 	fileHandler := handler.NewFileHandler(base, fileSvc)
 	parseHandler := handler.NewParseHandler(base, fileSvc)
-	vulnHandler := handler.NewVulnHandler(base, vulnSvc)
+	vulnHandler := handler.NewVulnHandler(base, vulnSvc, integrationSvc)
 	assessHandler := handler.NewAssessmentHandler(base, assessSvc)
 	sysCfgHandler := handler.NewSystemConfigHandler(base, riskCfgSvc)
 	reportHandler := handler.NewReportHandler(base, reportSvc)
 	remediationHandler := handler.NewRemediationHandler(base, remediationSvc)
 	dashboardHandler := handler.NewDashboardHandler(base, dashboardSvc)
+	integrationHandler := handler.NewIntegrationHandler(base, integrationSvc)
 
 	guard := middleware.NewGuard(logger)
 
@@ -460,6 +466,46 @@ func New(deps Deps, db *gorm.DB) (*gin.Engine, error) {
 				sysCfgHandler.Get)
 			sys.PATCH("/configs",
 				guard.RequirePermission(auth.PermSystemWrite), sysCfgHandler.Update)
+		}
+
+		// ── 三方情报源（P7）────────────────────────────────────────
+		//
+		// ▍权限分工是本模块的核心决策：**管理动作 vs 业务动作**
+		//
+		//	读配置、触发拉取 → integration:read / integration:write
+		//	建配置、改配置   → system:write
+		//
+		// 建与改**刻意不挂 integration:write**。改 base_url 与凭据指向，
+		// 决定的是「这台服务器接下来会向哪里发起请求」——那是系统设置
+		// （与改风险模型阈值同级），不是业务动作。
+		// 若把它挂在 integration:write 上，那么给评估员开「拉取」这个
+		// 业务权限，就等于同时把「指定出站目标」的能力交给了他，
+		// 而指定出站目标正是 SSRF 的入口。
+		//
+		// 落点效果：assessor 能拉取但不能改配置；admin 两者皆可；
+		// auditor 由 readOnlyPermissions() 自动获得 integration:read 只读。
+		//
+		// ▍没有 DELETE
+		//
+		// 集成配置是审计记录指向的对象（`integration.fetch` 的明细里记着
+		// integration_id / base_url / type）。允许删除会让历史审计变成
+		// 「一条指向不存在的配置的记录」。停用（enabled=false）已经覆盖了
+		// 「不再使用」这个真实需求，而它可逆、可追溯。
+		// 这与字典的「内置项不删只停用」、用户的「禁用而非删除」是同一立场。
+		integrations := secured.Group("/integrations")
+		{
+			integrations.GET("",
+				guard.RequirePermission(auth.PermIntegrationRead), integrationHandler.List)
+			integrations.POST("",
+				guard.RequirePermission(auth.PermSystemWrite), integrationHandler.Create)
+			integrations.GET("/:id",
+				guard.RequirePermission(auth.PermIntegrationRead), integrationHandler.Get)
+			integrations.PATCH("/:id",
+				guard.RequirePermission(auth.PermSystemWrite), integrationHandler.Update)
+			// 拉取是**写操作**（会写 vuln_intel 与运行态），因此用 POST 而不是 GET。
+			// 用 GET 的话它会被 CDN / 浏览器预取，而那意味着一次计划外的出站请求。
+			integrations.POST("/:id/fetch",
+				guard.RequirePermission(auth.PermIntegrationWrite), integrationHandler.FetchIntel)
 		}
 	}
 

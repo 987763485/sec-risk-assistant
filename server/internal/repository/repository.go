@@ -44,6 +44,14 @@ type Repository struct {
 	// 整改单是业务事实，按 (asset_id, vuln_id) 独立存在，
 	// 而不是 assessments 或 risk_items 的从属数据（见迁移 000007 约束 1）。
 	Remediation *RemediationRepository
+	// Integration 三方情报源配置与漏洞情报快照（P7）。
+	//
+	// 两张表（integrations / vuln_intel）合一个仓储：它们的关系是
+	// 「配置指向适配器，适配器产出快照」，而 source 列上的取值是
+	// 适配器类型而非配置 ID（见迁移 000008 约束 1）——
+	// 拆成两个仓储只会让「拉取」这个动作横跨两个对象，
+	// 而它们必然在同一次调用里成对出现。
+	Integration *IntegrationRepository
 }
 
 // New 构建仓储聚合。
@@ -62,6 +70,7 @@ func New(db *gorm.DB) *Repository {
 		Assessment:  NewAssessmentRepository(db),
 		SystemCfg:   NewSystemConfigRepository(db),
 		Remediation: NewRemediationRepository(db),
+		Integration: NewIntegrationRepository(db),
 	}
 }
 
@@ -94,6 +103,7 @@ func (r *Repository) WithTx(tx *gorm.DB) *Repository {
 		Assessment:  NewAssessmentRepository(tx),
 		SystemCfg:   NewSystemConfigRepository(tx),
 		Remediation: NewRemediationRepository(tx),
+		Integration: NewIntegrationRepository(tx),
 	}
 }
 

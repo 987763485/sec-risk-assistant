@@ -243,6 +243,25 @@ export const businessRoutes: RouteRecordRaw[] = [
           icon: 'SetUp',
         },
       },
+      {
+        path: '/system/integrations',
+        name: 'system-integrations',
+        component: () => import('@/views/system/IntegrationView.vue'),
+        // 与后端路由上挂的守卫保持一致：GET /api/integrations 需要 integration:read
+        //
+        // 菜单按 integration:read 收口，**不是** system:read：评估员与整改员
+        // 要在漏洞详情里看到「这条情报来自哪个源」，因此他们需要能进这一页；
+        // 而建 / 改配置属于管理动作，按钮另有 system:write 把关
+        // （页面里的 canManage），路由本身不为此拦人。
+        meta: {
+          title: '情报源集成',
+          permission: 'integration:read',
+          menu: true,
+          menuGroup: '系统管理',
+          menuOrder: 24,
+          icon: 'Connection',
+        },
+      },
     ],
   },
 ]

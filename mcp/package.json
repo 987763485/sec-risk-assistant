@@ -1,0 +1,21 @@
+{
+  "name": "sec-risk-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "网络安全风险评估助手 —— MCP Server（只读工具骨架 + 可选的按需写工具）",
+  "engines": {
+    "node": ">=20.3.0"
+  },
+  "bin": {
+    "sec-risk-mcp": "./src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "smoke": "node test/mcp-smoke.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "zod": "^3.25.76"
+  }
+}
