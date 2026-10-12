@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    docgen 服务 —— 只做「结构化数据 → docx」，不含任何业务逻辑。
+    无数据库连接、无用户体系、不做风险计算、完全无状态。
+
+    ⚠️ 目标框架定 net10.0：
+       .NET 8 的 LTS 支持在 2026 年 11 月到期，.NET 9 是 STS（已停止支持），
+       只有 .NET 10 是当前 LTS（支持至 2028）。
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>SecRisk.DocGen</RootNamespace>
+    <AssemblyName>SecRisk.DocGen</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+
+    <!-- 警告即错误：OpenXML 的错误大多是静默失败，先在这种低级问题上拦住 -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+
+    <!-- 需要完整全球化能力（中文日期、区域格式） -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+
+    <Version>0.1.0</Version>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 微软官方 OOXML SDK —— ECMA-376 参考实现，控制力天花板最高 -->
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.5.1" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,70 @@
+{
+  "name": "sec-risk-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "网络安全风险评估助手 —— 前端",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build && npm run verify:css",
+    "build:only": "vite build",
+    "verify:css": "node scripts/verify-css-layer.mjs",
+    "api:types": "openapi-typescript ../docs/openapi.yaml -o src/api/generated/schema.d.ts",
+    "api:check": "openapi-typescript ../docs/openapi.yaml -o src/api/generated/schema.d.ts --check",
+    "preview": "vite preview --port 4173",
+    "typecheck": "vue-tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "2.3.2",
+    "axios": "1.20.0",
+    "echarts": "6.1.0",
+    "element-plus": "2.14.7",
+    "pinia": "4.0.3",
+    "vue": "3.5.43",
+    "vue-echarts": "8.3.2",
+    "vue-router": "5.4.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@tailwindcss/vite": "4.3.3",
+    "@types/node": "26.6.5",
+    "@vitejs/plugin-vue": "6.0.9",
+    "eslint": "10.12.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-vue": "10.11.1",
+    "globals": "17.13.0",
+    "openapi-typescript": "^7.10.1",
+    "prettier": "3.9.9",
+    "sass": "1.105.1",
+    "tailwindcss": "4.3.3",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.71.1",
+    "unplugin-auto-import": "21.1.0",
+    "unplugin-vue-components": "32.1.0",
+    "vite": "8.3.4",
+    "vue-tsc": "3.3.12"
+  },
+  "comments": {
+    "versionLock": [
+      "所有版本均为实查 npm 后的精确锁定，不用 ^ 或 ~",
+      "typescript 必须锁 5.9.x：typescript-eslint 的 peer 约束是 >=4.8.4 <6.1.0，",
+      "  而 npm 上 typescript 的 latest 已是 7.0.2，直接装会装到不被支持的版本",
+      "vue-router 5.4.0 的 vite / pinia 等 peer 依赖均为 optional，不会强制引入"
+    ],
+    "lintStack": [
+      "globals 必须显式声明为直接依赖，不能靠 eslint 的传递依赖：",
+      "  ESLint 扁平配置移除了 env 推导，不注入 globals 就会把",
+      "  document / console / HTMLElement 全部报成未定义变量（实测 24 个 error）",
+      "eslint-config-prettier 用来关掉 eslint-plugin-vue 带的 20+ 条纯排版规则：",
+      "  它们与 Prettier 对换行的答案不一致，会导致 format 与 lint 互相推翻",
+      "职责分工：格式归 Prettier，类型归 vue-tsc，ESLint 只管明显错误"
+    ]
+  }
+}

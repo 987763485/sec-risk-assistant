@@ -1,0 +1,17 @@
+# 构建产物与依赖 —— 不是源码，不参与格式化
+dist/
+node_modules/
+coverage/
+.verify/
+
+# 自动生成的类型声明（由 unplugin-* 写入，手改会被下一次构建覆盖）
+src/types/auto-imports.d.ts
+src/types/components.d.ts
+
+# 由 docs/openapi.yaml 生成的接口类型。它必须与 spec 逐字节可比，
+# Prettier 一重排就会让 `npm run api:check` 永远报「已过期」，
+# 于是这个守卫会被人为关掉——宁可放弃对它格式化。
+src/api/generated/
+
+# 锁文件保持 npm 自己的排版，Prettier 重排会产生无意义的巨大 diff
+package-lock.json

@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<report extension="xml" type="full_report" content_type="full_report" id="a1b2c3d4-1111-2222-3333-444455556666" format="xml">
+  <envelope>
+    <name>OpenVAS 扫描 2026-09-30</name>
+    <creation_time>2026-09-30T10:00:00Z</creation_time>
+  </envelope>
+  <host count="2">
+    <host>
+      <ip>192.168.1.10</ip>
+      <asset>0</asset>
+    </host>
+    <host>
+      <ip>10.0.0.5 (db-01)</ip>
+    </host>
+  </host>
+  <results start="1" max="3">
+    <result id="100001">
+      <subnet>192.168.1.0</subnet>
+      <host>192.168.1.10</host>
+      <hostname>web-01.corp.local</hostname>
+      <port>443/tcp</port>
+      <nvt oid="1.3.6.1.4.1.25623.1.0.108443">
+        <type>nvt</type>
+        <name>TLS Version 1.1 Protocol Detection</name>
+        <family>General</family>
+        <cvss_base>4.3</cvss_base>
+        <cve>CVE-2011-3389</cve>
+        <qod><value>80</value><type>remote_banner</type></qod>
+      </nvt>
+      <severity>4.3</severity>
+      <qod><value>80</value><type>remote_banner</type></qod>
+      <host_asset>0</host_asset>
+      <name>TLS Version 1.1 Protocol Detection</name>
+      <kev>0</kev>
+      <exploitable>0</exploitable>
+      <original_threat>Medium</original_threat>
+      <threat>Medium</threat>
+      <severity_orig>4.3</severity_orig>
+      <original_severity>4.3</original_severity>
+      <description>The remote service accepts connections using TLS 1.1.</description>
+      <solution>Disable TLS 1.1 and enable TLS 1.2 or higher.</solution>
+    </result>
+    <result id="100002">
+      <host>10.0.0.5</host>
+      <hostname>db-01.corp.local</hostname>
+      <port>5432/tcp</port>
+      <nvt oid="1.3.6.1.4.1.25623.1.0.103980">
+        <type>nvt</type>
+        <name>PostgreSQL Weak Password</name>
+        <family>Default Accounts</family>
+        <cvss_base>9.8</cvss_base>
+        <cve>CVE-1999-0502</cve>
+      </nvt>
+      <severity>9.8</severity>
+      <name>PostgreSQL Weak Password</name>
+      <threat>High</threat>
+      <description>The PostgreSQL service uses a weak password.</description>
+      <solution type="Other">Change the password to a strong one.</solution>
+    </result>
+    <result id="100003">
+      <host>10.0.0.5</host>
+      <port>general/tcp</port>
+      <nvt oid="1.3.6.1.4.1.25623.1.0.900600">
+        <type>nvt</type>
+        <name>Unsupported Operating System</name>
+      </nvt>
+      <severity>-1.0</severity>
+      <name>Unsupported Operating System</name>
+      <threat>None</threat>
+      <description>The remote OS is no longer supported.</description>
+    </result>
+  </results>
+</report>
