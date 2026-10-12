@@ -1814,6 +1814,157 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/integrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 情报源集成列表
+         * @description 需要权限 `integration:read`。
+         *
+         *     **不分页**：集成是运维配置，数量以个数计（现实里几十条已属很多），
+         *     而配置页需要一次看到全部才能判断「有没有配重」。
+         *     这与业务列表（资产、漏洞）必须分页的立场不同——那里数据量无上界。
+         *
+         *     响应里一并下发 `supported_types` 与 `credential_env_prefix`：
+         *     前端据此渲染类型下拉框与前缀提示，避免在前端硬编码这两份后端事实
+         *     （硬编码会在后端新增适配器时出现「界面里没有这个类型可选」，
+         *     而那种缺失不报错）。
+         */
+        get: operations["listIntegrations"];
+        put?: never;
+        /**
+         * 新建情报源集成
+         * @description 需要权限 `system:write`（而不是 `integration:write`，理由见本节的权限分工）。
+         *     审计动作 `integration.update`。
+         *
+         *     `base_url` 会经过 SSRF 校验：只允许 http/https，且主机解析出的
+         *     **每一个** IP 都不得落在回环、私有、链路本地、CGNAT 或保留网段。
+         *     被拒返回 `INTEGRATION_ENDPOINT_BLOCKED`。
+         *
+         *     `credential_env` 只接受固定前缀的名称；填了却不符合格式返回
+         *     `INTEGRATION_CREDENTIAL_INVALID`。**这里不做「环境变量是否存在」的
+         *     检查**——那是部署状态，创建配置时它可能还没设上；该检查在拉取时
+         *     以 `INTEGRATION_CREDENTIAL_MISSING` 的形式给出。
+         *
+         *     名称唯一由数据库索引兜底，服务层先查一次只为给出 409 与人话。
+         */
+        post: operations["createIntegration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 情报源集成 ID */
+                id: components["parameters"]["IntegrationId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * 查询单个集成
+         * @description 需要权限 `integration:read`。
+         */
+        get: operations["getIntegration"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * 修改集成配置
+         * @description 需要权限 `system:write`。审计动作 `integration.update`。
+         *
+         *     未传的字段保持不变。
+         *
+         *     `credential_env` 是三态字段：
+         *
+         *         不传   不修改
+         *         null   清空（不再使用凭据）
+         *         "值"   改为该变量名
+         *
+         *     「清空凭据」是一个真实且常见的操作（换用免凭据的上游）。
+         *     若只用「传空串表示清空」，它与「传了个空串所以什么都不做」
+         *     在服务端无法区分。
+         *
+         *     ⚠️ 校验是**合并后整体校验**，不是逐字段校验：把类型从 `local`
+         *     改成 `nvd` 时，单独看 `base_url`（空串，对 local 合法）与单独看
+         *     `type`（合法）都没问题，合起来却是一个「nvd 类型 + 空地址」的
+         *     非法组合。因此改任一字段都会拿最终的组合重新过一遍全部规则。
+         *
+         *     若本次没有实际改动任何字段，返回 `INVALID_PARAM`
+         *     （而不是静默成功）—— 否则前端无法区分「保存成功」与
+         *     「提交了一份没有任何变化的表单」。
+         */
+        patch: operations["updateIntegration"];
+        trace?: never;
+    };
+    "/api/integrations/{id}/fetch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 情报源集成 ID */
+                id: components["parameters"]["IntegrationId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 对一个漏洞触发一次情报拉取
+         * @description 需要权限 `integration:write`。审计动作 `integration.fetch`。
+         *
+         *     这是 P7 的验收标志所在的接口：**配置集成后能拉取一条 CVE 信息**。
+         *
+         *     ▍HTTP 200 **不代表全部成功**，必须读 `succeeded` / `failed`
+         *
+         *     拉取的结果天生是「部分成功」的：一次拉 3 个 CVE，可能 2 个成功、
+         *     1 个被上游限流。因此本接口恒定返回 200，结果对象里给出计数与
+         *     逐条失败原因。
+         *
+         *     这一条**必须**写进调用方的代码：只判断状态码会把「全部失败」
+         *     当成成功，而用户会以为数据已经拉到了。
+         *
+         *     之所以不把失败折成一个 502：成功的那些**已经写进库里**了，
+         *     报错会让调用方以为什么都没发生，从而重复点击。
+         *
+         *     ▍出站目标被拒是唯一的例外
+         *
+         *     若 `base_url` 在出站时被安全策略拒绝（例如 DNS 在保存之后被改成了
+         *     内网地址），本次请求直接以 `INTEGRATION_ENDPOINT_BLOCKED` 中止，
+         *     不再逐条尝试——它说明**整个集成的目标**有问题，
+         *     剩下的请求只会得到同一个答案。
+         *
+         *     ▍拉取的 CVE 范围
+         *
+         *     `vuln_id` 必填；`cve_id` 可选：
+         *
+         *     - 给出 `cve_id`：只拉它，且它必须属于该漏洞的 `cve_ids`。
+         *       不允许拉一条无关的 CVE —— 情报是漏洞的属性，
+         *       允许挂任意 CVE 会让「这条情报凭什么挂在这条漏洞上」无从回答。
+         *     - 未给出：拉取该漏洞登记的全部 CVE，超过单次上限（5 个）返回
+         *       `INVALID_PARAM`，提示改为显式指定。
+         *
+         *     ⚠️ 情报写在一张**快照表**上，唯一键是 `(vuln_id, source, cve_id)`。
+         *     重复拉取是**更新**而不是新增，因此这个接口是幂等的
+         *     （`inserted` 与 `updated` 会变化，但库里的条数不变）。
+         */
+        post: operations["fetchVulnIntel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1855,7 +2006,7 @@ export interface components {
          *     多登记 → 契约里出现永远拿不到的幽灵码，两种方向都会让测试变红。
          * @enum {string}
          */
-        ErrorCode: "INVALID_PARAM" | "UNAUTHORIZED" | "FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "TOO_MANY_REQUESTS" | "INTERNAL_ERROR" | "AUTH_INVALID_CREDENTIALS" | "AUTH_ACCOUNT_LOCKED" | "AUTH_ACCOUNT_DISABLED" | "AUTH_TOKEN_EXPIRED" | "AUTH_TOKEN_INVALID" | "AUTH_CSRF_INVALID" | "AUTH_PASSWORD_WEAK" | "AUTH_PASSWORD_MISMATCH" | "AUTH_MUST_CHANGE_PASSWORD" | "AUTH_PASSWORD_UNCHANGED" | "USER_USERNAME_TAKEN" | "USER_EMAIL_TAKEN" | "USER_LAST_ADMIN" | "USER_SELF_OPERATION" | "USER_ROLE_NOT_ASSIGNABLE" | "ASSET_NOT_FOUND" | "ASSET_NO_TAKEN" | "ASSET_TYPE_UNKNOWN" | "ASSET_GROUP_NOT_FOUND" | "ASSET_GROUP_NAME_TAKEN" | "ASSET_GROUP_HAS_CHILDREN" | "ASSET_GROUP_HAS_ASSETS" | "ASSET_GROUP_CYCLE" | "ASSET_GROUP_DEPTH_EXCEEDED" | "ASSET_IMPORT_FILE_MISSING" | "ASSET_IMPORT_FILE_TOO_LARGE" | "ASSET_IMPORT_FORMAT_INVALID" | "ASSET_IMPORT_MISSING_COLUMNS" | "ASSET_IMPORT_NO_ROWS" | "ASSET_IMPORT_TOO_MANY_ROWS" | "ASSET_IMPORT_HAS_ERRORS" | "ASSET_IMPORT_GROUP_NOT_FOUND" | "DICTIONARY_NOT_FOUND" | "DICTIONARY_CATEGORY_INVALID" | "DICTIONARY_CODE_TAKEN" | "DICTIONARY_CODE_IMMUTABLE" | "DICTIONARY_BUILTIN_READONLY" | "DICTIONARY_IN_USE" | "FILE_NOT_FOUND" | "FILE_TYPE_REJECTED" | "FILE_TOO_LARGE" | "FILE_ALREADY_PARSED" | "FILE_IN_USE" | "FILE_FORMAT_UNKNOWN" | "VULN_NOT_FOUND" | "VULN_HAS_ERRORS" | "VULN_IMPORT_NO_ROWS" | "VULN_IMPORT_MISSING_COLUMNS" | "VULN_IMPORT_TOO_MANY_ROWS" | "ASSESSMENT_NOT_FOUND" | "ASSESSMENT_SCOPE_EMPTY" | "ASSESSMENT_EXPORT_TOO_LARGE" | "RISK_ITEM_NOT_FOUND" | "RISK_CONFIG_INVALID" | "RISK_CONFIG_READONLY" | "THREAT_NOT_FOUND" | "REPORT_NOT_CALCULATED" | "REPORT_RENDER_FAILED" | "REMEDIATION_NOT_FOUND" | "REMEDIATION_DUPLICATE_ACTIVE" | "REMEDIATION_STATUS_INVALID" | "REMEDIATION_TRANSITION_INVALID" | "REMEDIATION_NOTE_REQUIRED" | "REMEDIATION_DELETE_FORBIDDEN" | "REMEDIATION_BATCH_TOO_LARGE" | "REMEDIATION_BATCH_EMPTY";
+        ErrorCode: "INVALID_PARAM" | "UNAUTHORIZED" | "FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "TOO_MANY_REQUESTS" | "INTERNAL_ERROR" | "AUTH_INVALID_CREDENTIALS" | "AUTH_ACCOUNT_LOCKED" | "AUTH_ACCOUNT_DISABLED" | "AUTH_TOKEN_EXPIRED" | "AUTH_TOKEN_INVALID" | "AUTH_CSRF_INVALID" | "AUTH_PASSWORD_WEAK" | "AUTH_PASSWORD_MISMATCH" | "AUTH_MUST_CHANGE_PASSWORD" | "AUTH_PASSWORD_UNCHANGED" | "USER_USERNAME_TAKEN" | "USER_EMAIL_TAKEN" | "USER_LAST_ADMIN" | "USER_SELF_OPERATION" | "USER_ROLE_NOT_ASSIGNABLE" | "ASSET_NOT_FOUND" | "ASSET_NO_TAKEN" | "ASSET_TYPE_UNKNOWN" | "ASSET_GROUP_NOT_FOUND" | "ASSET_GROUP_NAME_TAKEN" | "ASSET_GROUP_HAS_CHILDREN" | "ASSET_GROUP_HAS_ASSETS" | "ASSET_GROUP_CYCLE" | "ASSET_GROUP_DEPTH_EXCEEDED" | "ASSET_IMPORT_FILE_MISSING" | "ASSET_IMPORT_FILE_TOO_LARGE" | "ASSET_IMPORT_FORMAT_INVALID" | "ASSET_IMPORT_MISSING_COLUMNS" | "ASSET_IMPORT_NO_ROWS" | "ASSET_IMPORT_TOO_MANY_ROWS" | "ASSET_IMPORT_HAS_ERRORS" | "ASSET_IMPORT_GROUP_NOT_FOUND" | "DICTIONARY_NOT_FOUND" | "DICTIONARY_CATEGORY_INVALID" | "DICTIONARY_CODE_TAKEN" | "DICTIONARY_CODE_IMMUTABLE" | "DICTIONARY_BUILTIN_READONLY" | "DICTIONARY_IN_USE" | "FILE_NOT_FOUND" | "FILE_TYPE_REJECTED" | "FILE_TOO_LARGE" | "FILE_ALREADY_PARSED" | "FILE_IN_USE" | "FILE_FORMAT_UNKNOWN" | "VULN_NOT_FOUND" | "VULN_HAS_ERRORS" | "VULN_IMPORT_NO_ROWS" | "VULN_IMPORT_MISSING_COLUMNS" | "VULN_IMPORT_TOO_MANY_ROWS" | "ASSESSMENT_NOT_FOUND" | "ASSESSMENT_SCOPE_EMPTY" | "ASSESSMENT_EXPORT_TOO_LARGE" | "RISK_ITEM_NOT_FOUND" | "RISK_CONFIG_INVALID" | "RISK_CONFIG_READONLY" | "THREAT_NOT_FOUND" | "REPORT_NOT_CALCULATED" | "REPORT_RENDER_FAILED" | "REMEDIATION_NOT_FOUND" | "REMEDIATION_DUPLICATE_ACTIVE" | "REMEDIATION_STATUS_INVALID" | "REMEDIATION_TRANSITION_INVALID" | "REMEDIATION_NOTE_REQUIRED" | "REMEDIATION_DELETE_FORBIDDEN" | "REMEDIATION_BATCH_TOO_LARGE" | "REMEDIATION_BATCH_EMPTY" | "INTEGRATION_NOT_FOUND" | "INTEGRATION_TYPE_UNKNOWN" | "INTEGRATION_NAME_TAKEN" | "INTEGRATION_DISABLED" | "INTEGRATION_ENDPOINT_BLOCKED" | "INTEGRATION_CREDENTIAL_INVALID" | "INTEGRATION_CREDENTIAL_MISSING";
         /**
          * 带结构化明细的错误信封
          * @description 极少数错误需要把结构化明细一并返回，典型场景是批量导入：错误响应必须
@@ -2079,11 +2230,23 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
-        /** 漏洞详情（含关联资产） */
+        /** 漏洞详情（含关联资产与情报快照） */
         VulnerabilityDetail: {
             vulnerability: components["schemas"]["Vulnerability"];
             /** @description 关联的全部资产（auto + manual，manual 排在前面） */
             assets: components["schemas"]["VulnAsset"][];
+            /**
+             * @description 该漏洞的情报快照（P7）。**为空时是空数组而不是 null**，
+             *     前端直接遍历即可。
+             *
+             *     情报**按漏洞而不是按整改单**挂载：它描述的是漏洞本身
+             *     （CVE 的 CVSS、描述、参考链接），与「哪台机器上有它」无关。
+             *     挂在整改单上会让同一条 CVE 在 N 台资产上被拉 N 次、存 N 份。
+             *
+             *     条目按 `source`、`cve_id` 升序排列，顺序稳定——
+             *     不定序会让详情页每次刷新时条目的位置抖动，用户会以为是内容变了。
+             */
+            intel: components["schemas"]["VulnIntel"][];
         };
         /** 漏洞分页 */
         VulnPage: {
@@ -2249,7 +2412,7 @@ export interface components {
          * @description 形如 `<资源>:<动作>`，仅 `read` / `write` 两档。
          * @enum {string}
          */
-        PermissionCode: "user:read" | "user:write" | "role:read" | "role:write" | "asset:read" | "asset:write" | "dictionary:read" | "dictionary:write" | "file:read" | "file:write" | "vulnerability:read" | "vulnerability:write" | "assessment:read" | "assessment:write" | "remediation:read" | "remediation:write" | "report:read" | "report:write" | "audit:read" | "system:read" | "system:write";
+        PermissionCode: "user:read" | "user:write" | "role:read" | "role:write" | "asset:read" | "asset:write" | "dictionary:read" | "dictionary:write" | "file:read" | "file:write" | "vulnerability:read" | "vulnerability:write" | "assessment:read" | "assessment:write" | "remediation:read" | "remediation:write" | "report:read" | "report:write" | "audit:read" | "system:read" | "system:write" | "integration:read" | "integration:write";
         /** 修改密码请求 */
         ChangePasswordRequest: {
             old_password: string;
@@ -3561,9 +3724,254 @@ export interface components {
             /** @description 「即将到期」的窗口天数（当前为 7），由后端给出而不是前端写死 */
             due_within_days: number;
         };
+        /**
+         * 情报源集成
+         * @description ⚠️ 这个结构里**没有**、也永远不会有凭据的值。
+         *     表里存的是**环境变量名**，视图里给的是「那个变量名」与
+         *     「它当前有没有值」。
+         *
+         *     后一位（`credential_present`）是运维最常踩的坑的解药：
+         *     配了变量名却忘了给服务进程设上那个变量，症状是「一拉就报错，
+         *     但配置页看着全对」，排查方向会被引向 API Key 是否有效。
+         */
+        Integration: {
+            /** Format: uint64 */
+            id: number;
+            /** @description 唯一，用于区分同类型的多个实例 */
+            name: string;
+            /**
+             * @description 适配器类型。取值由后端下发（见 `IntegrationList.supported_types`），
+             *     不要在前端硬编码：新增一个适配器时前端应自动多出一项。
+             * @enum {string}
+             */
+            type: "nvd" | "local";
+            /** @description 类型中文名，供列表直接展示 */
+            type_label: string;
+            /**
+             * @description 上游基址。⚠️ 用户可控的出站目标：保存与拉取时都会过 SSRF 校验，
+             *     主机解析出的每一个 IP 都不得落在回环、私有、链路本地、
+             *     CGNAT 或保留网段。
+             */
+            base_url: string;
+            /**
+             * @description 凭据所在的**环境变量名**，不是凭据本身。空串表示该集成无需凭据。
+             *     只接受固定前缀的名称（见 `IntegrationList.credential_env_prefix`）。
+             */
+            credential_env: string;
+            /**
+             * @description 该环境变量当前在服务进程里是否已设置且非空。
+             *     **只回答「有没有」，绝不回答「是什么」。**
+             */
+            credential_present: boolean;
+            enabled: boolean;
+            /** @description 单次拉取超时（毫秒）。服务端会把越界值收敛到这个区间而不是报错 */
+            timeout_ms: number;
+            /** @description 最近一次拉取时间（RFC3339）；`null` 表示从未拉取过 */
+            last_run_at?: string | null;
+            /**
+             * @description `success` / `failed`；空串表示从未拉取过。
+             *     判据是「本次是否**全部**成功」——部分失败也记为 `failed`，
+             *     因为这一列要回答的是「这个集成现在能不能正常用」。
+             * @enum {string}
+             */
+            last_status: "" | "success" | "failed";
+            /**
+             * @description 最近一次失败原因（已截断到 255 字符）。
+             *     **不含凭据**：适配器保证不带，服务层出口处还有一道剔除兜底。
+             */
+            last_error?: string;
+            /** @description 最近一次拉取耗时（毫秒） */
+            last_latency_ms?: number | null;
+            created_at: string;
+            /**
+             * @description 行最后变更时间，**包含运行态写入**。
+             *
+             *     ⚠️ 也就是说它**不是**「配置最后修改时间」：一次拉取会刷新它。
+             *     界面不要把这一列标成「最后修改」，否则用户会看到「我没改配置，
+             *     时间怎么变了」。运行态与配置同表是刻意的（P7 不做拉取历史，
+             *     运行态只有一行，拆表会让列表页为了一行数据去 JOIN）。
+             */
+            updated_at: string;
+        };
+        /**
+         * 可选的情报源类型
+         * @description 由后端下发，前端据此渲染类型下拉框。
+         */
+        IntegrationTypeOption: {
+            type: string;
+            /** @description 中文名。放后端是因为新增适配器时必须改代码，前端硬编码会显示成空白 */
+            label: string;
+            /** @description 界面预填用；空串表示该类型不需要地址。**不构成白名单**——预填值同样要过校验 */
+            default_base_url: string;
+            /**
+             * @description 是否建议配置凭据。用「建议」而不是「必需」：不配凭据也能调 NVD
+             *     （只是会被严格限流），强制必填会把「先试着拉一条看看」
+             *     这个最自然的探索动作挡在门外。
+             */
+            credential_recommended: boolean;
+        };
+        /** 集成列表 */
+        IntegrationList: {
+            items: components["schemas"]["Integration"][];
+            supported_types: components["schemas"]["IntegrationTypeOption"][];
+            /**
+             * @description 凭据环境变量名要求的前缀，供前端做即时表单提示。
+             *     同样由后端下发：前端硬编码这个前缀，改了后端就会出现
+             *     「界面说可以、提交被拒」的分叉。
+             */
+            credential_env_prefix: string;
+        };
+        /**
+         * 漏洞情报快照
+         * @description 外部拉取结果的**快照**：入库时定稿，之后不重算。
+         *
+         *     - 严重度是**上游说的**（`severity` 而不是按分数现算）。
+         *       本地现算会让「上游标 high 但我们算出 6.5（medium）」
+         *       在同一行里给出两个互相矛盾的答案。
+         *     - `fetched_at` 与 `published_at` 都要留：前者回答
+         *       「我们什么时候知道的」，后者回答「这个漏洞什么时候公开的」。
+         *       混用会让「情报是否过期」这类判断做出错误结论。
+         */
+        VulnIntel: {
+            /** Format: uint64 */
+            id: number;
+            /**
+             * @description 情报源标识（适配器类型）。
+             *     存类型而不是集成配置的 id：类型是适配器的不变量，
+             *     而配置可以被删除重建——存 id 会让历史情报指向一个不存在的配置。
+             * @enum {string}
+             */
+            source: "nvd" | "local";
+            /** @description 情报源中文名 */
+            source_label: string;
+            /**
+             * @description 本条情报对应的 CVE 编号。**唯一键是 `(vuln_id, source, cve_id)`**：
+             *     一条漏洞可挂多个 CVE，唯一键少一列会让后一条覆盖前一条。
+             */
+            cve_id: string;
+            /** @description 上游给的标题。NVD 不提供标题字段，因此它**经常为空**——展示请用 `display_title` */
+            title: string;
+            /**
+             * @description `title` 为空时的回退展示值（退回 `cve_id`）。
+             *     回退放后端：每个展示点各写一次 `|| cveId` 的话，
+             *     漏掉的那处会渲染成一片空白。
+             */
+            display_title: string;
+            description: string;
+            /**
+             * @description 入库时一次性归一化的结果。`unknown` 表示上游没给可识别的档位、
+             *     分数也没有——刻意不用「默认 medium」：把未知当中间值会在统计图里
+             *     凭空造出一批「中危」，而它们其实只是没数据。
+             * @enum {string}
+             */
+            severity: "critical" | "high" | "medium" | "low" | "unknown";
+            /**
+             * Format: double
+             * @description CVSS 基础分；`null` 表示上游未给出
+             */
+            cvss_score?: number | null;
+            cvss_vector: string;
+            /** @description 上游的发布时间（RFC3339） */
+            published_at?: string | null;
+            /** @description 参考链接 */
+            references: string[];
+            /** @description 本次抓取时间（RFC3339） */
+            fetched_at: string;
+        };
+        /** 新建情报源集成 */
+        CreateIntegrationRequest: {
+            name: string;
+            /** @enum {string} */
+            type: "nvd" | "local";
+            /** @description 留空时按类型取默认地址（`local` 不需要地址） */
+            base_url?: string;
+            /** @description 凭据所在的**环境变量名**；留空表示无需凭据 */
+            credential_env?: string;
+            /** @default true */
+            enabled: boolean;
+            /**
+             * @description 越界值会被收敛到 [1000, 30000] 而不是报错
+             * @default 10000
+             */
+            timeout_ms: number;
+        };
+        /**
+         * 修改情报源集成
+         * @description 未传的字段保持不变。校验按**合并后的最终值**整体进行。
+         */
+        UpdateIntegrationRequest: {
+            name?: string | null;
+            /** @enum {string|null} */
+            type?: "nvd" | "local" | null;
+            base_url?: string | null;
+            /**
+             * @description 三态：不传 = 不修改；`null` = 清空（不再使用凭据）；
+             *     传值 = 改为该变量名。
+             */
+            credential_env?: string | null;
+            enabled?: boolean | null;
+            timeout_ms?: number | null;
+        };
+        /** 触发情报拉取 */
+        FetchVulnIntelRequest: {
+            /**
+             * Format: uint64
+             * @description 目标漏洞。情报接在**漏洞**层而不是整改单层
+             */
+            vuln_id: number;
+            /**
+             * @description 可选。留空表示拉取该漏洞登记的全部 CVE（单次上限 5 个）。
+             *     给出时必须属于该漏洞的 `cve_ids`——情报是漏洞的属性，
+             *     不允许挂一条与该漏洞无关的 CVE。
+             */
+            cve_id?: string;
+        };
+        /** 单条 CVE 的拉取失败 */
+        FetchFailure: {
+            cve_id: string;
+            /**
+             * @description 面向人的原因。**不含凭据**：适配器保证不带，
+             *     服务层出口处还有一道按凭据值剔除的兜底。
+             */
+            message: string;
+        };
+        /**
+         * 情报拉取结果
+         * @description ⚠️ 它恒定挂在 HTTP 200 上，**包括全部失败的情况**。
+         *
+         *     调用方必须读 `succeeded` / `failed`，不能只看状态码。
+         *     只回一个 502 会让调用方以为什么都没发生，从而重复点击——
+         *     而成功的那些**已经写进库里**了。
+         */
+        FetchVulnIntelResult: {
+            /** Format: uint64 */
+            integration_id: number;
+            integration_name: string;
+            integration_type: string;
+            /** Format: uint64 */
+            vuln_id: number;
+            /** @description 本次尝试的 CVE 列表（已归一化为大写） */
+            requested: string[];
+            /** @description 成功条数 */
+            succeeded: number;
+            /** @description 失败条数。`succeeded + failed == len(requested)` */
+            failed: number;
+            /** @description 落库时新增的条数 */
+            inserted: number;
+            /**
+             * @description 落库时更新的条数（同一 `(vuln_id, source, cve_id)` 重复拉取是更新而不是新增，
+             *     因此本接口是**幂等**的：`inserted`/`updated` 会变，库里的条数不变）
+             */
+            updated: number;
+            /** @description 本次拉取命中的快照（读自库中，含 id 与 fetched_at，前端可直接渲染） */
+            items: components["schemas"]["VulnIntel"][];
+            errors: components["schemas"]["FetchFailure"][];
+            /** @description 本次拉取总耗时（含落库与写运行态） */
+            latency_ms: number;
+        };
     };
     responses: {
-        /** @description 参数不合法或请求无法处理（`INVALID_PARAM` / `AUTH_PASSWORD_WEAK` / `AUTH_PASSWORD_MISMATCH` / `AUTH_PASSWORD_UNCHANGED` / `USER_ROLE_NOT_ASSIGNABLE` / `ASSET_TYPE_UNKNOWN` / `ASSET_GROUP_CYCLE` / `ASSET_GROUP_DEPTH_EXCEEDED` / `DICTIONARY_CATEGORY_INVALID` / `DICTIONARY_CODE_IMMUTABLE` / `ASSET_IMPORT_FILE_MISSING` / `ASSET_IMPORT_FILE_TOO_LARGE` / `ASSET_IMPORT_FORMAT_INVALID` / `ASSET_IMPORT_MISSING_COLUMNS` / `ASSET_IMPORT_NO_ROWS` / `ASSET_IMPORT_TOO_MANY_ROWS` / `ASSET_IMPORT_GROUP_NOT_FOUND` / `FILE_TYPE_REJECTED` / `VULN_IMPORT_NO_ROWS` / `VULN_IMPORT_MISSING_COLUMNS` / `VULN_IMPORT_TOO_MANY_ROWS` / `ASSESSMENT_SCOPE_EMPTY` / `ASSESSMENT_EXPORT_TOO_LARGE` / `RISK_CONFIG_INVALID` / `THREAT_NOT_FOUND` / `REMEDIATION_STATUS_INVALID` / `REMEDIATION_NOTE_REQUIRED` / `REMEDIATION_BATCH_TOO_LARGE`） */
+        /** @description 参数不合法或请求无法处理（`INVALID_PARAM` / `AUTH_PASSWORD_WEAK` / `AUTH_PASSWORD_MISMATCH` / `AUTH_PASSWORD_UNCHANGED` / `USER_ROLE_NOT_ASSIGNABLE` / `ASSET_TYPE_UNKNOWN` / `ASSET_GROUP_CYCLE` / `ASSET_GROUP_DEPTH_EXCEEDED` / `DICTIONARY_CATEGORY_INVALID` / `DICTIONARY_CODE_IMMUTABLE` / `ASSET_IMPORT_FILE_MISSING` / `ASSET_IMPORT_FILE_TOO_LARGE` / `ASSET_IMPORT_FORMAT_INVALID` / `ASSET_IMPORT_MISSING_COLUMNS` / `ASSET_IMPORT_NO_ROWS` / `ASSET_IMPORT_TOO_MANY_ROWS` / `ASSET_IMPORT_GROUP_NOT_FOUND` / `FILE_TYPE_REJECTED` / `VULN_IMPORT_NO_ROWS` / `VULN_IMPORT_MISSING_COLUMNS` / `VULN_IMPORT_TOO_MANY_ROWS` / `ASSESSMENT_SCOPE_EMPTY` / `ASSESSMENT_EXPORT_TOO_LARGE` / `RISK_CONFIG_INVALID` / `THREAT_NOT_FOUND` / `REMEDIATION_STATUS_INVALID` / `REMEDIATION_NOTE_REQUIRED` / `REMEDIATION_BATCH_TOO_LARGE` / `INTEGRATION_TYPE_UNKNOWN` / `INTEGRATION_ENDPOINT_BLOCKED` / `INTEGRATION_CREDENTIAL_INVALID`） */
         BadRequest: {
             headers: {
                 [name: string]: unknown;
@@ -3590,7 +3998,7 @@ export interface components {
                 "application/json": components["schemas"]["ErrorEnvelope"];
             };
         };
-        /** @description 资源不存在（`NOT_FOUND` / `ASSET_NOT_FOUND` / `ASSET_GROUP_NOT_FOUND` / `DICTIONARY_NOT_FOUND` / `FILE_NOT_FOUND` / `VULN_NOT_FOUND` / `ASSESSMENT_NOT_FOUND` / `RISK_ITEM_NOT_FOUND` / `REMEDIATION_NOT_FOUND`） */
+        /** @description 资源不存在（`NOT_FOUND` / `ASSET_NOT_FOUND` / `ASSET_GROUP_NOT_FOUND` / `DICTIONARY_NOT_FOUND` / `FILE_NOT_FOUND` / `VULN_NOT_FOUND` / `ASSESSMENT_NOT_FOUND` / `RISK_ITEM_NOT_FOUND` / `REMEDIATION_NOT_FOUND` / `INTEGRATION_NOT_FOUND`） */
         NotFound: {
             headers: {
                 [name: string]: unknown;
@@ -3599,7 +4007,7 @@ export interface components {
                 "application/json": components["schemas"]["ErrorEnvelope"];
             };
         };
-        /** @description 与现有状态冲突（`USER_USERNAME_TAKEN` / `USER_EMAIL_TAKEN` / `USER_LAST_ADMIN` / `USER_SELF_OPERATION` / `ASSET_NO_TAKEN` / `ASSET_GROUP_NAME_TAKEN` / `ASSET_GROUP_HAS_CHILDREN` / `ASSET_GROUP_HAS_ASSETS` / `DICTIONARY_CODE_TAKEN` / `DICTIONARY_BUILTIN_READONLY` / `DICTIONARY_IN_USE` / `FILE_ALREADY_PARSED` / `FILE_IN_USE` / `REPORT_NOT_CALCULATED` / `REMEDIATION_DUPLICATE_ACTIVE` / `REMEDIATION_TRANSITION_INVALID` / `REMEDIATION_DELETE_FORBIDDEN` / `REMEDIATION_BATCH_EMPTY`） */
+        /** @description 与现有状态冲突（`USER_USERNAME_TAKEN` / `USER_EMAIL_TAKEN` / `USER_LAST_ADMIN` / `USER_SELF_OPERATION` / `ASSET_NO_TAKEN` / `ASSET_GROUP_NAME_TAKEN` / `ASSET_GROUP_HAS_CHILDREN` / `ASSET_GROUP_HAS_ASSETS` / `DICTIONARY_CODE_TAKEN` / `DICTIONARY_BUILTIN_READONLY` / `DICTIONARY_IN_USE` / `FILE_ALREADY_PARSED` / `FILE_IN_USE` / `REPORT_NOT_CALCULATED` / `REMEDIATION_DUPLICATE_ACTIVE` / `REMEDIATION_TRANSITION_INVALID` / `REMEDIATION_DELETE_FORBIDDEN` / `REMEDIATION_BATCH_EMPTY` / `INTEGRATION_NAME_TAKEN` / `INTEGRATION_DISABLED` / `INTEGRATION_CREDENTIAL_MISSING`） */
         Conflict: {
             headers: {
                 [name: string]: unknown;
@@ -3705,6 +4113,8 @@ export interface components {
         RiskItemId: number;
         /** @description 整改单 ID */
         RemediationId: number;
+        /** @description 情报源集成 ID */
+        IntegrationId: number;
     };
     requestBodies: never;
     headers: never;
@@ -5847,6 +6257,183 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listIntegrations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 集成列表与可选项 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkEnvelope"] & {
+                        data: components["schemas"]["IntegrationList"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createIntegration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateIntegrationRequest"];
+            };
+        };
+        responses: {
+            /** @description 新建的集成 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkEnvelope"] & {
+                        data: components["schemas"]["Integration"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getIntegration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 情报源集成 ID */
+                id: components["parameters"]["IntegrationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 集成详情 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkEnvelope"] & {
+                        data: components["schemas"]["Integration"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateIntegration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 情报源集成 ID */
+                id: components["parameters"]["IntegrationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateIntegrationRequest"];
+            };
+        };
+        responses: {
+            /** @description 更新后的集成 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkEnvelope"] & {
+                        data: components["schemas"]["Integration"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    fetchVulnIntel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 情报源集成 ID */
+                id: components["parameters"]["IntegrationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FetchVulnIntelRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description 拉取结果。**务必读 `succeeded` / `failed`**：
+             *     全部失败时同样返回 200，此时 `succeeded` 为 0 且 `errors` 非空。
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkEnvelope"] & {
+                        data: components["schemas"]["FetchVulnIntelResult"];
+                    };
+                };
+            };
+            /**
+             * @description 参数不合法或出站目标被拒（`INVALID_PARAM` /
+             *     `INTEGRATION_ENDPOINT_BLOCKED` / `INTEGRATION_TYPE_UNKNOWN`）。
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description 集成已停用，或凭据未就位（`INTEGRATION_DISABLED` /
+             *     `INTEGRATION_CREDENTIAL_MISSING`）。两者都是「请求没毛病、
+             *     当前状态不允许」，因此不是 400。前者让用户去启用，
+             *     后者让用户去改部署配置——错误码分开，前端才能给出正确的引导。
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
         };
     };
 }

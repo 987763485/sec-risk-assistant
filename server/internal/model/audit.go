@@ -113,6 +113,27 @@ const (
 	// 几百张单，逐张留痕会把审计页冲成一个没法看的数据转储，
 	// 而明细里的评估 ID 与条数已经足够追溯。
 	ActionRemediationBatchCreate = "remediation.batch_create"
+
+	// ---- P7 扩展模块（三方情报源）----
+	//
+	// ActionIntegrationUpdate 新建或修改集成配置。
+	//
+	// 建与改共用**同一个**动作码，而不是像资产那样分成 create / update：
+	// 集成配置的数量以个数计（现实里几十条已属很多），「谁加了这条」
+	// 与「谁改了这条」在审计里读起来是同一件事——都是「有人动了情报源的配置」。
+	// 而资源侧靠 ResourceID 就能区分具体是哪一条。
+	// （同 ActionSystemConfigUpdate 的处理：配置类动作不细分建改。）
+	ActionIntegrationUpdate = "integration.update"
+
+	// ActionIntegrationFetch 触发一次情报拉取。
+	//
+	// 这是 P7 的**主干动作**，也是唯一会发起出站请求的动作，
+	// 因此它必须与 update 分开：审计要能回答「谁让服务器去连了哪个地址、
+	// 拉了哪些 CVE、成功几条」。这些信息只在 fetch 这一条链路里，
+	// 混进 update 就再也筛不出来。
+	//
+	// ⚠️ 明细里**只记环境变量名与 CVE 编号，绝不记凭据本身**。
+	ActionIntegrationFetch = "integration.fetch"
 )
 
 // AuditLog 审计日志。

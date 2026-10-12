@@ -250,6 +250,18 @@ verify-report: ## 报告导出端到端验证：Word/Excel/PDF 解包断言 + �
 verify-remediate: ## 整改跟踪与仪表盘端到端验证：重算不断链 + 状态机 + 逾期 + 审计（用隔离临时库，需 infra 已就绪）
 	@bash scripts/verify-remediate.sh
 
+.PHONY: verify-integration
+verify-integration: ## 扩展模块端到端验证：情报拉取 + SSRF 两层防护 + 审计 + MCP Server（用隔离临时库，需 infra 与 mcp/node_modules）
+	@bash scripts/verify-integration.sh
+
+.PHONY: mcp-install
+mcp-install: ## 安装 MCP Server 依赖（mcp/）
+	cd mcp && $(NPM) install
+
+.PHONY: mcp-smoke
+mcp-smoke: ## MCP Server 冒烟（不起后端；SR_MCP_LIVE=1 时额外真登录）
+	cd mcp && $(NPM) run smoke
+
 # ---------------------------------------------------------------- 聚合
 .PHONY: build
 build: server-build web-build ## 构建全部产物

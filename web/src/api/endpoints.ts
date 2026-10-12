@@ -180,6 +180,41 @@ export type DashboardLatestAssessment = Schemas['DashboardLatestAssessment']
 export type DashboardTopAsset = Schemas['DashboardTopAsset']
 export type DashboardRemediations = Schemas['DashboardRemediations']
 
+// ---------------------------------------------------------------- 情报源集成（P7）
+export type Integration = Schemas['Integration']
+export type IntegrationList = Schemas['IntegrationList']
+export type IntegrationTypeOption = Schemas['IntegrationTypeOption']
+export type CreateIntegrationRequest = Schemas['CreateIntegrationRequest']
+export type UpdateIntegrationRequest = Schemas['UpdateIntegrationRequest']
+export type FetchVulnIntelRequest = Schemas['FetchVulnIntelRequest']
+export type FetchVulnIntelResult = Schemas['FetchVulnIntelResult']
+export type FetchFailure = Schemas['FetchFailure']
+export type VulnIntel = Schemas['VulnIntel']
+
+/**
+ * 适配器类型联合类型。
+ *
+ * 与 `PermissionCode` 同理：从契约派生而不是手写 `'nvd' | 'local'`。
+ * 但**运行时一律以 `IntegrationList.supported_types` 为准**——
+ * 类型是后端适配器的事实，前端类型联合只负责编译期收窄，
+ * 两者不能互为替代（新增适配器时下拉框要自动多一项）。
+ */
+export type IntegrationType = Integration['type']
+
+/**
+ * 集成最近一次拉取的判定结果。空串表示从未拉取过——
+ * 所以它不是简单的布尔，不能用 `!!last_status` 判断「是否成功」。
+ */
+export type IntegrationLastStatus = Integration['last_status']
+
+/**
+ * 情报严重度联合类型。
+ *
+ * 这是**上游说的**严重度（快照入库存下来），不是本地按 CVSS 分数现算的：
+ * 现算会让同一行里出现「上游标 high、我们算出 medium」两个互相矛盾的答案。
+ */
+export type IntelSeverity = VulnIntel['severity']
+
 // ---------------------------------------------------------------- 系统配置
 export type SystemConfigView = Schemas['SystemConfigView']
 export type SystemConfigItem = Schemas['SystemConfigItem']
