@@ -228,7 +228,10 @@ function formatMaxRisk(row: Assessment): string {
 
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
-            <el-tag :type="ASSESSMENT_STATUS_TAG_TYPE[asAssessment(row).status]" size="small">
+            <el-tag
+              :type="ASSESSMENT_STATUS_TAG_TYPE[asAssessment(row).status]"
+              size="small"
+            >
               {{ ASSESSMENT_STATUS_LABELS[asAssessment(row).status] }}
             </el-tag>
           </template>
@@ -237,7 +240,10 @@ function formatMaxRisk(row: Assessment): string {
         <el-table-column label="范围" width="110">
           <template #default="{ row }">
             <span>{{ SCOPE_TYPE_LABELS[asAssessment(row).scope_type] }}</span>
-            <span v-if="asAssessment(row).scope_type !== 'all'" class="ml-1 text-xs text-gray-400">
+            <span
+              v-if="asAssessment(row).scope_type !== 'all'"
+              class="ml-1 text-xs text-gray-400"
+            >
               {{ asAssessment(row).scope_ref.length }} 项
             </span>
           </template>
@@ -254,7 +260,8 @@ function formatMaxRisk(row: Assessment): string {
 
         <el-table-column label="资产 / 风险项" width="120" align="center">
           <template #default="{ row }">
-            {{ asAssessment(row).assets_count }} / {{ asAssessment(row).risk_items_count }}
+            {{ asAssessment(row).assets_count }} /
+            {{ asAssessment(row).risk_items_count }}
           </template>
         </el-table-column>
 
@@ -269,7 +276,10 @@ function formatMaxRisk(row: Assessment): string {
 
         <el-table-column label="等级分布" min-width="220">
           <template #default="{ row }">
-            <div v-if="hasAnyResult(asAssessment(row))" class="flex flex-wrap items-center gap-2">
+            <div
+              v-if="hasAnyResult(asAssessment(row))"
+              class="flex flex-wrap items-center gap-2"
+            >
               <span
                 v-for="entry in levelEntries(asAssessment(row))"
                 :key="entry.level"
@@ -278,7 +288,9 @@ function formatMaxRisk(row: Assessment): string {
               >
                 <i
                   class="inline-block h-2.5 w-2.5 rounded-sm"
-                  :style="{ backgroundColor: entry.count === 0 ? '#e5e7eb' : entry.color }"
+                  :style="{
+                    backgroundColor: entry.count === 0 ? '#e5e7eb' : entry.color,
+                  }"
                 ></i>
                 {{ RISK_LEVEL_LABELS[entry.level] }} {{ entry.count }}
               </span>
@@ -295,56 +307,75 @@ function formatMaxRisk(row: Assessment): string {
 
         <el-table-column label="操作" width="290" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="openExecute(asAssessment(row))">
-              执行
-            </el-button>
-            <el-button
-              v-if="hasAnyResult(asAssessment(row))"
-              link
-              type="primary"
-              size="small"
-              @click="openResult(asAssessment(row))"
-            >
-              结果
-            </el-button>
-            <!-- 草稿不可导出：后端会以 409 REPORT_NOT_CALCULATED 拒绝 -->
-            <el-dropdown
-              v-if="asAssessment(row).status === 'calculated'"
-              @command="handleExport(asAssessment(row), $event)"
-            >
+            <div class="flex">
               <el-button
                 link
                 type="primary"
                 size="small"
-                :loading="exportingId === asAssessment(row).id"
+                @click="openExecute(asAssessment(row))"
               >
-                导出<el-icon class="ml-0.5"><ArrowDown /></el-icon>
+                执行
               </el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item
-                    v-for="opt in REPORT_FORMAT_OPTIONS"
-                    :key="opt.value"
-                    :command="opt.value"
-                  >
-                    {{ opt.label }}（.{{ opt.ext }}）
-                  </el-dropdown-item>
-                </el-dropdown-menu>
+              <el-button
+                v-if="hasAnyResult(asAssessment(row))"
+                link
+                type="primary"
+                size="small"
+                @click="openResult(asAssessment(row))"
+              >
+                结果
+              </el-button>
+              <!-- 草稿不可导出：后端会以 409 REPORT_NOT_CALCULATED 拒绝 -->
+              <el-dropdown
+                v-if="asAssessment(row).status === 'calculated'"
+                @command="handleExport(asAssessment(row), $event)"
+              >
+                <el-button
+                  link
+                  type="primary"
+                  size="small"
+                  :loading="exportingId === asAssessment(row).id"
+                >
+                  导出<el-icon class="ml-0.5"><ArrowDown /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item
+                      v-for="opt in REPORT_FORMAT_OPTIONS"
+                      :key="opt.value"
+                      :command="opt.value"
+                    >
+                      {{ opt.label }}（.{{ opt.ext }}）
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+              <template v-if="canWrite">
+                <el-button
+                  link
+                  type="primary"
+                  size="small"
+                  @click="openEdit(asAssessment(row))"
+                >
+                  编辑
+                </el-button>
+                <el-button
+                  link
+                  type="danger"
+                  size="small"
+                  @click="handleDelete(asAssessment(row))"
+                >
+                  删除
+                </el-button>
               </template>
-            </el-dropdown>
-            <template v-if="canWrite">
-              <el-button link type="primary" size="small" @click="openEdit(asAssessment(row))">
-                编辑
-              </el-button>
-              <el-button link type="danger" size="small" @click="handleDelete(asAssessment(row))">
-                删除
-              </el-button>
-            </template>
+            </div>
           </template>
         </el-table-column>
 
         <template #empty>
-          <div class="py-8 text-sm text-gray-400">还没有评估任务。点击右上角「新建评估」开始。</div>
+          <div class="py-8 text-sm text-gray-400">
+            还没有评估任务。点击右上角「新建评估」开始。
+          </div>
         </template>
       </el-table>
 
@@ -361,6 +392,10 @@ function formatMaxRisk(row: Assessment): string {
       </div>
     </div>
 
-    <AssessmentFormDialog v-model="formVisible" :assessment="editing" @saved="handleSaved" />
+    <AssessmentFormDialog
+      v-model="formVisible"
+      :assessment="editing"
+      @saved="handleSaved"
+    />
   </div>
 </template>
