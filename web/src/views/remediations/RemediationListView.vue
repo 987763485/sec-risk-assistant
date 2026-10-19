@@ -244,7 +244,9 @@ function isTerminal(row: Remediation): boolean {
         :data="rows"
         stripe
         style="width: 100%"
-        :row-class-name="({ row }) => (isTerminal(asRemediation(row)) ? 'opacity-60' : '')"
+        :row-class-name="
+          ({ row }) => (isTerminal(asRemediation(row)) ? 'opacity-60' : '')
+        "
       >
         <el-table-column label="整改单" min-width="240" fixed show-overflow-tooltip>
           <template #default="{ row }">
@@ -253,7 +255,9 @@ function isTerminal(row: Remediation): boolean {
             </el-button>
             <div class="text-xs text-gray-400">
               {{ asRemediation(row).asset_name }}
-              <span v-if="asRemediation(row).asset_ip">· {{ asRemediation(row).asset_ip }}</span>
+              <span v-if="asRemediation(row).asset_ip"
+                >· {{ asRemediation(row).asset_ip }}</span
+              >
             </div>
             <div class="text-xs text-gray-400" :title="asRemediation(row).vuln_title">
               {{ asRemediation(row).vuln_title }}
@@ -283,7 +287,10 @@ function isTerminal(row: Remediation): boolean {
 
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="REMEDIATION_STATUS_TAG_TYPE[asRemediation(row).status]" size="small">
+            <el-tag
+              :type="REMEDIATION_STATUS_TAG_TYPE[asRemediation(row).status]"
+              size="small"
+            >
               {{ REMEDIATION_STATUS_LABELS[asRemediation(row).status] }}
             </el-tag>
           </template>
@@ -300,7 +307,9 @@ function isTerminal(row: Remediation): boolean {
 
         <el-table-column label="期限" width="110">
           <template #default="{ row }">
-            <span v-if="asRemediation(row).due_date">{{ asRemediation(row).due_date }}</span>
+            <span v-if="asRemediation(row).due_date">{{
+              asRemediation(row).due_date
+            }}</span>
             <span v-else class="text-gray-400">未设</span>
           </template>
         </el-table-column>
@@ -321,50 +330,59 @@ function isTerminal(row: Remediation): boolean {
           <template #default="{ row }">
             <div>{{ formatDateTime(asRemediation(row).updated_at) }}</div>
             <div class="text-xs text-gray-400">
-              建单人 {{ asRemediation(row).created_by_name || '—' }}
+              建单人 {{ asRemediation(row).created_by_name || "—" }}
             </div>
           </template>
         </el-table-column>
 
         <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="openDetail(asRemediation(row))">
-              详情
-            </el-button>
-            <!--
+            <div class="flex">
+              <el-button
+                link
+                type="primary"
+                size="small"
+                @click="openDetail(asRemediation(row))"
+              >
+                详情
+              </el-button>
+              <!--
               流转按钮由该行视图里的 transitions 渲染：终态（已闭环 / 风险接受）
               的 transitions 是空数组，因此**不需要**在这里判状态——判了就等于
               在前端写下第二份状态机。
             -->
-            <el-dropdown
-              v-if="canWrite && asRemediation(row).transitions.length"
-              @command="
+              <el-dropdown
+                v-if="canWrite && asRemediation(row).transitions.length"
+                @command="
                 (cmd: unknown) => openTransition(asRemediation(row), cmd as RemediationStatus)
               "
-            >
-              <el-button link type="primary" size="small">流转</el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item
-                    v-for="opt in asRemediation(row).transitions"
-                    :key="opt.to_status"
-                    :command="opt.to_status"
-                  >
-                    {{ REMEDIATION_STATUS_LABELS[opt.to_status] }}
-                    <span v-if="opt.note_required" class="ml-1 text-xs text-gray-400">需说明</span>
-                  </el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
-            <el-button
-              v-if="canWrite && asRemediation(row).status === 'pending'"
-              link
-              type="danger"
-              size="small"
-              @click="handleDelete(asRemediation(row))"
-            >
-              删除
-            </el-button>
+              >
+                <el-button link type="primary" size="small">流转</el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item
+                      v-for="opt in asRemediation(row).transitions"
+                      :key="opt.to_status"
+                      :command="opt.to_status"
+                    >
+                      {{ REMEDIATION_STATUS_LABELS[opt.to_status] }}
+                      <span v-if="opt.note_required" class="ml-1 text-xs text-gray-400"
+                        >需说明</span
+                      >
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+              <el-button
+                v-if="canWrite && asRemediation(row).status === 'pending'"
+                link
+                type="danger"
+                size="small"
+                @click="handleDelete(asRemediation(row))"
+              >
+                删除
+              </el-button>
+            </div>
           </template>
         </el-table-column>
 
